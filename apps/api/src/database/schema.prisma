@@ -1,0 +1,491 @@
+/// Prisma schema for the B2B Marketplace platform (Phase 0.2)
+/// Contains core entities, relationships, indexes, and JSON fields.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// User roles within the platform
+enum Role {
+  SELLER
+  BUYER
+  ADMIN
+}
+
+/// Seller company types
+enum CompanyType {
+  PROPRIETORSHIP
+  PRIVATE_LIMITED
+  LLP
+}
+
+/// KYC status for sellers
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Product availability status
+enum AvailabilityStatus {
+  IN_STOCK
+  OUT_OF_STOCK
+}
+
+/// Admin approval status for entities
+enum AdminApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Buy lead preferred contact channel
+enum ContactChannel {
+  WHATSAPP
+  TELEGRAM
+  EMAIL
+}
+
+/// Buy lead repeat options
+enum RepeatOption {
+  NONE
+  WEEKLY
+  MONTHLY
+}
+
+/// Lead credit transaction types
+enum LeadCreditTxnType {
+  PURCHASE
+  SPEND
+  REFUND
+}
+
+/// Order status lifecycle
+enum OrderStatus {
+  QUOTED
+  ACCEPTED
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
+/// Payment status for orders
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+/// Quote status
+enum QuoteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+/// Admin approval entity types
+enum AdminEntityType {
+  SELLER_KYC
+  PRODUCT_LISTING
+  BUYER_FRAUD
+}
+
+/// Audit actions captured by the audit log
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+/// Users table (PII)
+/// - Purpose: Stores platform users (buyers, sellers, admins)
+/// - Relationships: One-to-many with Sellers, Buyers, and AdminApprovals (as admin)
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  phoneNumber  String?        @unique
+  passwordHash String
+  role         Role           @default(BUYER)
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  sellers          Seller[]
+  buyers           Buyer[]
+  adminApprovals   AdminApproval[]  @relation("AdminApprovalsByAdmin")
+  approvedProducts Product[]        @relation("ProductApprovedBy")
+  auditLogs        AuditLog[]
+  notificationPreferences NotificationPreferences?
+  reportedTickets  ComplaintTicket[] @relation("TicketsByReporter")
+  receivedTickets  ComplaintTicket[] @relation("TicketsByReportedUser")
+
+  @@index([role, isActive])
+}
+
+/// Sellers table
+/// - Purpose: Company-level details for user accounts acting as sellers
+/// - PII/Sensitive: gstNumber, panNumber
+model Seller {
+  id            String     @id @default(cuid())
+  userId        String     @unique
+  user          User       @relation(fields: [userId], references: [id])
+  companyName   String
+  companyType   CompanyType
+  iecCode       String?
+  gstNumber     String?
+  panNumber     String?
+  isVerified    Boolean    @default(false)
+  kycStatus     KycStatus  @default(PENDING)
+  approvalDate  DateTime?
+  rejectionReason String?
+
+  // ADD THESE NEW FIELDS: 
+  registeredOfficeAddress String?
+  businessOfficeAddress   String?
+  city                     String?
+  state                    String?   // <-- CRITICAL: Required for Module 2 state filtering 
+  pincode                  String?
+  country                  String    @default("India")
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  products            Product[]
+  leadCreditWallet    LeadCreditWallet?
+  leadContactReveals  LeadContactReveal[]
+  orders              Order[]            @relation("OrdersBySeller")
+  quotes              Quote[]
+  creditTransactions  LeadCreditTransaction[]
+
+  @@index([gstNumber, panNumber])
+  @@index([isVerified, kycStatus])
+  @@index([state])  // <-- ADD STATE INDEX FOR FILTERING 
+}
+
+/// Buyers table
+/// - Purpose: Business/customer details for buyers
+enum BusinessType {
+  COMPANY
+  TRADER
+  CONSUMER
+}
+
+model Buyer {
+  id           String        @id @default(cuid())
+  userId       String        @unique
+  user         User          @relation(fields: [userId], references: [id])
+  businessType BusinessType
+  gstinNumber  String?
+  isVerified   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+
+  buyLeads  BuyLead[]
+  orders    Order[]          @relation("OrdersByBuyer")
+}
+
+/// Categories table
+/// - Purpose: Product categorization with self-referencing hierarchy
+model Category {
+  id           String      @id @default(cuid())
+  name         String      @unique
+  parentId     String?
+  parent       Category?   @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children     Category[]  @relation("CategoryHierarchy")
+  industryType String[]
+  description  String?
+  createdAt    DateTime    @default(now())
+
+  productLinks ProductCategory[]
+}
+
+/// Products table
+/// - Purpose: Catalog of items offered by sellers
+/// - Sensitive: certifications may include regulatory data (Public/Regulated)
+model Product {
+  id                    String               @id @default(cuid())
+  sellerId              String
+  seller                Seller               @relation(fields: [sellerId], references: [id])
+  name                  String
+  description           String?
+  hsnCode               String?
+  unit                  String?
+  multiTierPricing      Json
+  images                Json?
+  certifications        Json?
+  countryOfOrigin       String?
+  availabilityStatus    AvailabilityStatus   @default(IN_STOCK)
+  isActive              Boolean              @default(true)
+  adminApprovalStatus   AdminApprovalStatus  @default(PENDING)
+  approvedBy            String?
+  approvedByUser        User?                @relation("ProductApprovedBy", fields: [approvedBy], references: [id])
+  approvalDate          DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  deletedAt             DateTime?
+
+  categories ProductCategory[]
+  orders     Order[]
+  quotes     Quote[]
+  viewTracking ProductViewTracking[]
+
+  @@index([sellerId, isActive])
+  @@index([adminApprovalStatus, createdAt(sort: Desc)])
+}
+
+/// Junction table: Products <-> Categories
+model ProductCategory {
+  productId  String
+  categoryId String
+
+  product Product  @relation(fields: [productId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@id([productId, categoryId])
+}
+
+/// Buy leads posted by buyers for sourcing products
+/// - PII may appear in remarks but core fields are non-PII
+model BuyLead {
+  id               String        @id @default(cuid())
+  buyerId          String
+  buyer            Buyer         @relation(fields: [buyerId], references: [id])
+  productName      String
+  quantity         Decimal?      @db.Decimal(18, 4)
+  unit             String?
+  quantityRequired Int?
+  targetPriceMin   Decimal?      @db.Decimal(18, 2)
+  targetPriceMax   Decimal?      @db.Decimal(18, 2)
+  expectedCountry  String?
+  contactChannel   ContactChannel
+  isOpen           Boolean       @default(true)
+  expiryDate       DateTime?
+  repeatOption     RepeatOption  @default(NONE)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  expiresAt        DateTime?
+  deletedAt        DateTime?
+
+  contactReveals LeadContactReveal[]
+
+  @@index([buyerId])
+  @@index([expiryDate])
+  @@index([createdAt(sort: Desc)])
+}
+
+/// Lead credit wallet for sellers
+model LeadCreditWallet {
+  id               String   @id @default(cuid())
+  sellerId         String   @unique
+  seller           Seller   @relation(fields: [sellerId], references: [id])
+  balance          Decimal  @db.Decimal(18, 2) @default(0)
+  totalPurchased   Decimal  @db.Decimal(18, 2) @default(0)
+  totalSpent       Decimal  @db.Decimal(18, 2) @default(0)
+  lastRechargeDate DateTime?
+  lowBalanceThreshold Int    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  transactions LeadCreditTransaction[]
+}
+
+/// Transactions in the lead credit wallet
+model LeadCreditTransaction {
+  id          String             @id @default(cuid())
+  sellerId    String
+  seller      Seller             @relation(fields: [sellerId], references: [id])
+  walletId    String?
+  wallet      LeadCreditWallet?  @relation(fields: [walletId], references: [id])
+  type        LeadCreditTxnType
+  amount      Decimal            @db.Decimal(18, 2)
+  orderId     String?
+  timestamp   DateTime           @default(now())
+  referenceId String             @unique
+  createdAt   DateTime           @default(now())
+
+  @@index([sellerId, type])
+  @@index([walletId])
+}
+
+/// Contact reveal records when a seller spends credits to view buyer details
+/// - PII: buyerPhoneNumber, buyerEmail, buyerWhatsapp (Encrypted at application layer)
+model LeadContactReveal {
+  id                String    @id @default(cuid())
+  sellerId          String
+  seller            Seller    @relation(fields: [sellerId], references: [id])
+  buyLeadId         String
+  buyLead           BuyLead   @relation(fields: [buyLeadId], references: [id])
+  buyerPhoneNumber  String
+  buyerEmail        String
+  buyerWhatsapp     String
+  buyerGstin        String?
+  creditDeducted    Boolean   @default(true)
+  timestamp         DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+
+  @@index([sellerId, buyLeadId])
+}
+
+/// Orders between buyers and sellers
+model Order {
+  id                     String        @id @default(cuid())
+  buyerId                String
+  buyer                  Buyer         @relation("OrdersByBuyer", fields: [buyerId], references: [id])
+  sellerId               String
+  seller                 Seller        @relation("OrdersBySeller", fields: [sellerId], references: [id])
+  productId              String?
+  product                Product?      @relation(fields: [productId], references: [id])
+  status                 OrderStatus   @default(QUOTED)
+  quotedPrice            Decimal?      @db.Decimal(18, 2)
+  negotiatedPrice        Decimal?      @db.Decimal(18, 2)
+  finalPrice             Decimal?      @db.Decimal(18, 2)
+  platformFacilitationFee Decimal?     @db.Decimal(18, 2)
+  paymentStatus          PaymentStatus @default(PENDING)
+  paymentMethod          String?
+  razorpayPaymentId      String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  deletedAt              DateTime?
+
+  quotes Quote[]
+
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([paymentStatus])
+  @@index([createdAt(sort: Desc)])
+}
+
+/// Price quote for an order provided by a seller
+model Quote {
+  id          String      @id @default(cuid())
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id])
+  sellerId    String
+  seller      Seller      @relation(fields: [sellerId], references: [id])
+  productId   String?
+  product     Product?    @relation(fields: [productId], references: [id])
+  quotedPrice Decimal     @db.Decimal(18, 2)
+  leadTime    String?
+  notes       String?
+  status      QuoteStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  expiresAt   DateTime?
+
+  @@index([orderId])
+  @@index([sellerId, status])
+}
+
+/// Admin approvals for entities
+model AdminApproval {
+  id          String           @id @default(cuid())
+  adminId     String
+  admin       User             @relation("AdminApprovalsByAdmin", fields: [adminId], references: [id])
+  entityType  AdminEntityType
+  entityId    String
+  status      AdminApprovalStatus @default(PENDING)
+  submittedAt DateTime          @default(now())
+  reviewedAt  DateTime?
+  reviewNotes String?
+  createdAt   DateTime          @default(now())
+
+  @@index([adminId, entityType])
+  @@index([entityId, status])
+}
+
+/// Audit log capturing all mutations (compliance/forensics)
+/// - PII may be present in oldValue/newValue snapshots
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id])
+  entityType String
+  entityId   String
+  action     AuditAction
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  userAgent  String?
+  timestamp  DateTime    @default(now())
+  createdAt  DateTime    @default(now())
+
+  @@index([userId, entityType])
+  @@index([entityId, action])
+  @@index([createdAt(sort: Desc)])
+}
+
+/// Notification preferences for a user
+model NotificationPreferences {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id])
+  emailNotifications     Boolean  @default(true)
+  smsNotifications       Boolean  @default(false)
+  whatsappNotifications  Boolean  @default(false)
+  pushNotifications      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+/// Complaint/support ticket
+model ComplaintTicket {
+  id             String      @id @default(cuid())
+  reporterId     String
+  reporter       User        @relation("TicketsByReporter", fields: [reporterId], references: [id])
+  reportedUserId String
+  reportedUser   User        @relation("TicketsByReportedUser", fields: [reportedUserId], references: [id])
+  subject        String
+  description    String
+  status         ComplaintStatus @default(OPEN)
+  attachments    Json?
+  createdAt      DateTime    @default(now())
+  resolvedAt     DateTime?
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  @@index([reporterId])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+/// Feature flags with audience targeting
+model FeatureFlag {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  isEnabled         Boolean  @default(false)
+  rolloutPercentage Int      @default(0)
+  targetAudience    Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+/// Product view tracking for analytics
+model ProductViewTracking {
+  id           String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  viewCount    Int      @default(1)
+  lastViewedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([productId])
+  @@index([lastViewedAt(sort: Desc)])
+}

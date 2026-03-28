@@ -1,0 +1,23 @@
+# Development stage
+FROM node:20-alpine AS development
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared-components/package.json ./packages/shared-components/
+COPY packages/shared-types/package.json ./packages/shared-types/
+
+# Install dependencies
+RUN npm ci --workspace=apps/web --workspace=packages/shared-components --workspace=packages/shared-types
+
+# Copy source code
+COPY apps/web ./apps/web
+COPY packages/shared-components ./packages/shared-components
+COPY packages/shared-types ./packages/shared-types
+
+EXPOSE 3000
+
+# Start the application in development mode
+CMD ["npm", "run", "dev", "--workspace=apps/web"]

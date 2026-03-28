@@ -1,0 +1,44 @@
+{
+  "name": "b2b-marketplace-monorepo",
+  "version": "1.0.0",
+  "description": "Enterprise-grade B2B marketplace platform monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "concurrently \"npm run build:api\" \"npm run build:web\"",
+    "build:api": "npm run build --workspace=apps/api",
+    "build:web": "npm run build --workspace=apps/web",
+    "start": "concurrently \"npm run start:api\" \"npm run start:web\"",
+    "start:api": "npm run start --workspace=apps/api",
+    "start:web": "npm run start --workspace=apps/web",
+    "test": "concurrently \"npm run test:api\" \"npm run test:web\"",
+    "test:api": "npm run test --workspace=apps/api",
+    "test:web": "npm run test --workspace=apps/web",
+    "lint": "concurrently \"npm run lint:api\" \"npm run lint:web\"",
+    "lint:api": "npm run lint --workspace=apps/api",
+    "lint:web": "npm run lint --workspace=apps/web",
+    "typecheck": "concurrently \"npm run typecheck:api\" \"npm run typecheck:web\"",
+    "typecheck:api": "npm run typecheck --workspace=apps/api",
+    "typecheck:web": "npm run typecheck --workspace=apps/web",
+    "install:all": "npm install && npm run install:workspaces",
+    "install:workspaces": "npm install --workspace=apps/api --workspace=apps/web --workspace=packages/shared-types --workspace=packages/shared-components --workspace=packages/shared-utils"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5",
+    "prettier": "^3.1.1",
+    "eslint": "^8.56.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
+  "packageManager": "npm@9.8.1"
+}

@@ -1,0 +1,134 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ENVIRONMENT & SECRETS — NEVER COMMIT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.staging
+*.env
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# DEPENDENCIES
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# BUILD OUTPUTS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+dist/
+build/
+out/
+.next/
+.nuxt/
+*.tsbuildinfo
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LOGS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# UPLOADS & USER GENERATED FILES
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+uploads/
+apps/api/uploads/
+apps/api/invoices/
+apps/api/logs/
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PRISMA — Keep schema, ignore generated
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apps/api/src/database/generated/
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TESTING
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# EDITOR & OS FILES
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# VS Code
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/*.code-snippets
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# RUNTIME & CACHE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+*.swp
+*.swo
+*~
+.turbo/
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# DOCKER — local overrides only
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+docker-compose.override.yml
+docker-compose.local.yml
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# CERTIFICATES & KEYS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MISC PROJECT SPECIFIC
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+*.zip
+*.tar.gz
+*.rar
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Git rewrite artifacts
+.git-rewrite/

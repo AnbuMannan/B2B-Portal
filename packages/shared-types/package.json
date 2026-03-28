@@ -1,0 +1,17 @@
+{
+  "name": "@b2b-marketplace/shared-types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types and interfaces for B2B Marketplace",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5"
+  }
+}

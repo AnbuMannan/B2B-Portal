@@ -1,0 +1,14 @@
+{
+  "name": "B2B Marketplace",
+  "short_name": "B2B",
+  "description": "Enterprise-grade B2B marketplace platform connecting businesses across India",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["business", "ecommerce", "marketplace"],
+  "icons": []
+}
