@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import { ChevronDown, LayoutDashboard, MessageSquare, LogOut, User } from 'lucide-react'
+import { SearchBar } from '../search/SearchBar'
 
 const Header = () => {
   const { data: session, status } = useSession()
@@ -20,12 +21,17 @@ const Header = () => {
         className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 lg:px-8"
         aria-label="Main navigation"
       >
-        <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary" aria-label="Go to homepage">
+        <Link href="/" className="flex shrink-0 items-center gap-2 text-xl font-bold text-primary" aria-label="Go to homepage">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             B2B
           </span>
           <span className="hidden sm:inline">Marketplace</span>
         </Link>
+
+        {/* Global search bar */}
+        <div className="hidden flex-1 md:flex md:max-w-md lg:max-w-xl">
+          <SearchBar placeholder="Search products, suppliers…" className="w-full" />
+        </div>
 
         <div className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
           <Link href="/browse" className="hover:text-foreground">

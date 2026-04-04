@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import Header from '@/components/homepage/Header';
@@ -8,6 +8,12 @@ import Footer from '@/components/homepage/Footer';
 import SellerHeader from './components/SellerHeader';
 import SellerProducts from './components/SellerProducts';
 import ContactGate from './components/ContactGate';
+
+interface CatalogueItem {
+  id: string;
+  name: string;
+  image?: string;
+}
 
 interface SellerProfile {
   id: string;
@@ -21,7 +27,7 @@ interface SellerProfile {
   productCount: number;
   totalProductViews: number;
   industryTypes: string[];
-  cataloguePreview: any[];
+  cataloguePreview: CatalogueItem[];
 }
 
 function SkeletonLoader() {
@@ -62,7 +68,6 @@ function SkeletonLoader() {
 
 export default function SellerProfilePage() {
   const params = useParams();
-  const router = useRouter();
   const sellerId = params.sellerId as string;
 
   const { data: seller, isLoading, isError } = useQuery<SellerProfile>({

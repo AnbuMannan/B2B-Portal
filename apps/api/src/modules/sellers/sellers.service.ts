@@ -204,4 +204,12 @@ export class SellersService {
 
     return new PaginatedResponseDto(data, new PaginationMetaDto(page, limit, total));
   }
+
+  async getSitemapSellerIds(): Promise<string[]> {
+    const sellers = await this.prisma.seller.findMany({
+      where: { kycStatus: 'APPROVED' as any },
+      select: { id: true },
+    });
+    return sellers.map((s) => s.id);
+  }
 }

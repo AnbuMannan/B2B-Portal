@@ -4,7 +4,7 @@ import { Queue } from 'bull';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/database.service';
 import { RedisService } from '../../services/redis/redis.service';
-import { ElasticsearchService } from '../../services/elasticsearch/elasticsearch.service';
+// import { ElasticsearchService } from '../../services/elasticsearch/elasticsearch.service'; // TODO: Enable when Elasticsearch is available
 import { ProductsQueryDto, CategoryProductsQueryDto, ProductResponseDto, ProductDetailResponseDto, ProductSortBy, CreateEnquiryDto } from './dto/products.dto';
 import { PaginationParamsDto, PaginatedResponseDto, PaginationMetaDto } from '../../common/dto/pagination.dto';
 import { CacheInvalidationService } from '../../common/services/cache-invalidation.service';
@@ -16,7 +16,7 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
-    private readonly elasticsearchService: ElasticsearchService,
+    // private readonly elasticsearchService: ElasticsearchService, // TODO: Enable when Elasticsearch is available
     private readonly cacheInvalidation: CacheInvalidationService,
     @InjectQueue('search-sync') private readonly searchSyncQueue: Queue,
   ) {}
@@ -333,57 +333,60 @@ export class ProductsService {
       return this.getCategoryProducts('', flatQuery);
     }
 
-    try {
-      const page = paginationParams.page || 1;
-      const limit = paginationParams.limit || 20;
+    // TODO: Elasticsearch is disabled. Using Prisma full-text search fallback.
+    // Uncomment below when Elasticsearch is available.
+    // try {
+    //   const page = paginationParams.page || 1;
+    //   const limit = paginationParams.limit || 20;
 
-      const results = await this.elasticsearchService.search({
-        index: 'products',
-        body: {
-          from: (page - 1) * limit,
-          size: limit,
-          query: {
-            bool: {
-              must: [
-                {
-                  multi_match: {
-                    query: searchTerm,
-                    fields: ['name^3', 'description^2', 'name.hinglish'],
-                    fuzziness: 'AUTO',
-                    operator: 'or',
-                  },
-                },
-              ],
-              filter: [
-                { term: { isActive: true } },
-                { term: { adminApprovalStatus: 'APPROVED' } },
-              ],
-            },
-          },
-          sort: [
-            { _score: { order: 'desc' } },
-            { createdAt: { order: 'desc' } },
-          ],
-        },
-      });
+    //   const results = await this.elasticsearchService.search({
+    //     index: 'products',
+    //     body: {
+    //       from: (page - 1) * limit,
+    //       size: limit,
+    //       query: {
+    //         bool: {
+    //           must: [
+    //             {
+    //               multi_match: {
+    //                 query: searchTerm,
+    //                 fields: ['name^3', 'description^2', 'name.hinglish'],
+    //                 fuzziness: 'AUTO',
+    //                 operator: 'or',
+    //               },
+    //             },
+    //           ],
+    //           filter: [
+    //             { term: { isActive: true } },
+    //             { term: { adminApprovalStatus: 'APPROVED' } },
+    //           ],
+    //         },
+    //       },
+    //       sort: [
+    //         { _score: { order: 'desc' } },
+    //         { createdAt: { order: 'desc' } },
+    //       ],
+    //     },
+    //   });
 
-      const total = results.hits.total instanceof Object ? results.hits.total.value : (results.hits.total || 0);
-      const products = results.hits.hits.map((hit: any) => ({
-        id: hit._id,
-        ...hit._source,
-      }));
+    //   const total = results.hits.total instanceof Object ? results.hits.total.value : (results.hits.total || 0);
+    //   const products = results.hits.hits.map((hit: any) => ({
+    //     id: hit._id,
+    //     ...hit._source,
+    //   }));
 
-      // Transform hits to ProductResponseDto
-      const productDtos = products.map((p: any) => this.transformToProductDtoFromES(p));
+    //   // Transform hits to ProductResponseDto
+    //   const productDtos = products.map((p: any) => this.transformToProductDtoFromES(p));
 
-      return new PaginatedResponseDto(
-        productDtos,
-        new PaginationMetaDto(page, limit, total)
-      );
-    } catch (error) {
-      this.logger.error(`Elasticsearch search failed, falling back to Prisma: ${error.message}`);
-      return this.getPrismaFullTextSearch(searchTerm, paginationParams);
-    }
+    //   return new PaginatedResponseDto(
+    //     productDtos,
+    //     new PaginationMetaDto(page, limit, total)
+    //   );
+    // } catch (error) {
+    //   this.logger.error(`Elasticsearch search failed, falling back to Prisma: ${error.message}`);
+    //   return this.getPrismaFullTextSearch(searchTerm, paginationParams);
+    // }
+    return this.getPrismaFullTextSearch(searchTerm, paginationParams);
   }
 
   private async getPrismaFullTextSearch(
@@ -724,5 +727,22 @@ export class ProductsService {
 
     // Invalidate product caches
     await this.cacheInvalidation.invalidateProductCaches(id);
+  }
+
+  async getSitemapProductIds(): Promise<string[]> {
+    const products = await this.prisma.product.findMany({
+      where: { isActive: true, adminApprovalStatus: 'APPROVED' as any },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50000,
+    });
+    return products.map((p) => p.id);
+  }
+
+  async getSitemapCategoryIds(): Promise<string[]> {
+    const categories = await this.prisma.category.findMany({
+      select: { id: true },
+    });
+    return categories.map((c) => c.id);
   }
 }

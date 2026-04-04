@@ -7,6 +7,8 @@ import { LatestBuyLeads } from './components/homepage/LatestBuyLeads'
 import { FeaturedSellers } from './components/homepage/FeaturedSellers'
 import CTASections from '@/components/homepage/CTASections'
 import Footer from '@/components/homepage/Footer'
+import { OrganizationSchema } from '@/components/seo/OrganizationSchema'
+import { SearchBoxSchema } from '@/components/seo/SearchBoxSchema'
 
 export const metadata: Metadata = {
   title: 'B2B Marketplace - Connect with Verified Sellers Across India',
@@ -18,35 +20,17 @@ export const metadata: Metadata = {
     title: 'B2B Marketplace - Connect with Verified Sellers Across India',
     description: "India's trusted B2B platform for buyers and sellers",
     type: 'website',
+    siteName: 'B2B Portal',
     url: process.env.NEXT_PUBLIC_APP_URL || 'https://b2b-portal.in',
   },
-}
-
-const organizationJsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'Organization',
-  name: 'B2B Portal',
-  url: process.env.NEXT_PUBLIC_APP_URL || 'https://b2b-portal.in',
-  logo: `${process.env.NEXT_PUBLIC_APP_URL || 'https://b2b-portal.in'}/logo.svg`,
-  sameAs: [
-    'https://www.facebook.com',
-    'https://www.linkedin.com',
-    'https://twitter.com',
-    'https://www.instagram.com',
-  ],
-  address: {
-    '@type': 'PostalAddress',
-    addressCountry: 'IN',
+  twitter: {
+    card: 'summary_large_image',
+    title: 'B2B Marketplace - Connect with Verified Sellers Across India',
+    description: "India's trusted B2B platform for buyers and sellers",
   },
-  contactPoint: [
-    {
-      '@type': 'ContactPoint',
-      contactType: 'customer support',
-      email: 'support@b2bportal.com',
-      telephone: '+91-0000-000-000',
-      availableLanguage: ['en', 'hi'],
-    },
-  ],
+  alternates: {
+    canonical: '/',
+  },
 }
 
 export default function HomePage() {
@@ -62,11 +46,8 @@ export default function HomePage() {
         <CTASections />
         <Footer />
       </main>
-      <script
-        type="application/ld+json"
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
-      />
+      <OrganizationSchema />
+      <SearchBoxSchema />
     </>
   )
 }

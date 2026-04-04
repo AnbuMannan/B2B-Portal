@@ -12,6 +12,14 @@ import {
 export class SellersController {
   constructor(private readonly sellersService: SellersService) {}
 
+  @Get('sitemap-ids')
+  @ApiOperation({ summary: 'Return all approved seller IDs for sitemap generation' })
+  @ApiResponse({ status: 200, type: ApiResponseDto })
+  async getSitemapSellerIds(): Promise<ApiResponseDto<{ ids: string[] }>> {
+    const ids = await this.sellersService.getSitemapSellerIds();
+    return ApiResponseDto.success('Sitemap seller IDs retrieved', { ids });
+  }
+
   @Get()
   @ApiOperation({ summary: 'List verified sellers directory' })
   @ApiResponse({ status: 200, type: ApiResponseDto })

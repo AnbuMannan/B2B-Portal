@@ -90,6 +90,22 @@ export class ProductsController {
     );
   }
 
+  @Get('products/sitemap-ids')
+  @ApiOperation({ summary: 'Return all approved product IDs for sitemap generation' })
+  @ApiResponse({ status: 200, type: ApiResponseDto })
+  async getSitemapProductIds(): Promise<ApiResponseDto<{ ids: string[] }>> {
+    const ids = await this.productsService.getSitemapProductIds();
+    return ApiResponseDto.success('Sitemap product IDs retrieved', { ids });
+  }
+
+  @Get('categories/sitemap-ids')
+  @ApiOperation({ summary: 'Return all category IDs for sitemap generation' })
+  @ApiResponse({ status: 200, type: ApiResponseDto })
+  async getSitemapCategoryIds(): Promise<ApiResponseDto<{ ids: string[] }>> {
+    const ids = await this.productsService.getSitemapCategoryIds();
+    return ApiResponseDto.success('Sitemap category IDs retrieved', { ids });
+  }
+
   @Get('products')
   @ApiOperation({ summary: 'Search products with filters and sorting (full-text search)' })
   @ApiResponse({ status: 200, type: ApiResponseDto })

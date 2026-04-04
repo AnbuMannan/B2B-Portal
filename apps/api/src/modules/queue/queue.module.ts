@@ -3,10 +3,13 @@ import { BullModule } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
 
 import { NotificationQueueConsumer } from './notification.queue';
-import { SearchSyncQueueConsumer } from './search-sync.queue';
 import { EmailQueueConsumer } from './email.queue';
 import { SmsQueueConsumer } from './sms.queue';
 import { ExportQueueConsumer } from './export.queue';
+
+// NOTE: SearchSyncQueueConsumer has been moved to SearchModule (search-sync.consumer.ts)
+// to co-locate it with SearchService which it depends on. QueueModule still registers
+// the queues here so other modules can inject them via @InjectQueue.
 
 @Module({
   imports: [
@@ -31,6 +34,7 @@ import { ExportQueueConsumer } from './export.queue';
     BullModule.registerQueue(
       { name: 'notifications' },
       { name: 'search-sync' },
+      { name: 'search-analytics' },
       { name: 'email' },
       { name: 'sms' },
       { name: 'export' },
@@ -39,7 +43,6 @@ import { ExportQueueConsumer } from './export.queue';
   ],
   providers: [
     NotificationQueueConsumer,
-    SearchSyncQueueConsumer,
     EmailQueueConsumer,
     SmsQueueConsumer,
     ExportQueueConsumer,

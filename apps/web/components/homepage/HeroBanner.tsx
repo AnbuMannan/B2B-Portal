@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
 
 type SearchType = 'products' | 'suppliers' | 'buy-leads'
@@ -13,8 +14,21 @@ const options: { label: string; value: SearchType }[] = [
 ]
 
 const HeroBanner = () => {
+  const router = useRouter()
   const [searchType, setSearchType] = useState<SearchType>('products')
   const [query, setQuery] = useState('')
+
+  const handleSearch = () => {
+    const trimmed = query.trim()
+    if (!trimmed) return
+    if (searchType === 'products') {
+      router.push(`/search?q=${encodeURIComponent(trimmed)}`)
+    } else if (searchType === 'suppliers') {
+      router.push(`/search?q=${encodeURIComponent(trimmed)}&type=suppliers`)
+    } else {
+      router.push(`/post-requirement`)
+    }
+  }
 
   const placeholderMap: Record<SearchType, string> = {
     products: 'Search for products, SKUs, or categories',
@@ -56,6 +70,7 @@ const HeroBanner = () => {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 type="text"
                 placeholder={placeholderMap[searchType]}
                 className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-gray-400"
@@ -63,6 +78,7 @@ const HeroBanner = () => {
             </div>
             <button
               type="button"
+              onClick={handleSearch}
               className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700"
             >
               <Search className="mr-2 h-4 w-4" />

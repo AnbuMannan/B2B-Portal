@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { validateConfig } from './config/configuration';
 import { RedisService } from './services/redis/redis.service';
-import { ElasticsearchService } from './services/elasticsearch/elasticsearch.service';
+// import { ElasticsearchService } from './services/elasticsearch/elasticsearch.service'; // TODO: Enable when Elasticsearch is available
 import { DatabaseService } from './database/database.service';
 import { FileSystemService } from './services/file-system/file-system.service';
 
@@ -120,19 +120,19 @@ async function performStartupValidations(app: INestApplication) {
       }
     }
 
-    // 3. Elasticsearch connection validation
-    try {
-      logger.log('Validating Elasticsearch connection...');
-      const elasticsearchService = app.get(ElasticsearchService);
-      await elasticsearchService.validateConnection();
-      logger.log('✅ Elasticsearch connection validated');
-    } catch (e: any) {
-      if (isDev) {
-        logger.warn(`Skipping Elasticsearch validation in development: ${e.message}`);
-      } else {
-        throw e;
-      }
-    }
+    // 3. Elasticsearch connection validation (DISABLED - enable when Elasticsearch is available)
+    // try {
+    //   logger.log('Validating Elasticsearch connection...');
+    //   const elasticsearchService = app.get(ElasticsearchService);
+    //   await elasticsearchService.validateConnection();
+    //   logger.log('✅ Elasticsearch connection validated');
+    // } catch (e: any) {
+    //   if (isDev) {
+    //     logger.warn(`Skipping Elasticsearch validation in development: ${e.message}`);
+    //   } else {
+    //     throw e;
+    //   }
+    // }
 
     // 4. File system validation
     try {

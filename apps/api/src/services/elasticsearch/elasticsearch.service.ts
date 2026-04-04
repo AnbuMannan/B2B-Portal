@@ -18,6 +18,8 @@ export class ElasticsearchService {
 
     const clientOptions: ClientOptions = {
       node: elasticsearchUrl,
+      requestTimeout: 2000, // fail fast → Prisma fallback kicks in within 2s
+      maxRetries: 0,        // no retries — we have a Prisma fallback
     };
 
     if (username && password) {

@@ -5,11 +5,22 @@ import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 
+interface PricingTier {
+  price?: number;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 interface CatalogueProduct {
   id: string;
   name: string;
-  images: any;
-  multiTierPricing: any;
+  images: string[] | null;
+  multiTierPricing: Record<string, PricingTier> | null;
   categoryName: string;
 }
 
@@ -17,16 +28,18 @@ interface SellerProductsProps {
   sellerId: string;
 }
 
-function getMinPrice(multiTierPricing: any): number | null {
+function getMinPrice(multiTierPricing: Record<string, PricingTier> | null): number | null {
   if (!multiTierPricing || typeof multiTierPricing !== 'object') return null;
-  const tiers = Object.values(multiTierPricing) as any[];
-  const prices = tiers.map((t) => t?.price).filter((p) => typeof p === 'number' && p > 0);
+  const tiers = Object.values(multiTierPricing);
+  const prices = tiers
+    .map((t) => t?.price)
+    .filter((p): p is number => typeof p === 'number' && p > 0);
   return prices.length > 0 ? Math.min(...prices) : null;
 }
 
-function getFirstImage(images: any): string | null {
+function getFirstImage(images: string[] | null): string | null {
   if (!images) return null;
-  if (Array.isArray(images) && images.length > 0) return images[0] as string;
+  if (Array.isArray(images) && images.length > 0) return images[0];
   return null;
 }
 
@@ -108,7 +121,7 @@ export default function SellerProducts({ sellerId }: SellerProductsProps) {
       );
       if (!res.ok) throw new Error('Failed to fetch products');
       const json = await res.json();
-      return json.data as { data: CatalogueProduct[]; pagination: any };
+      return json.data as { data: CatalogueProduct[]; pagination: Pagination };
     },
     enabled: !!sellerId,
   });
@@ -123,7 +136,7 @@ export default function SellerProducts({ sellerId }: SellerProductsProps) {
   }, [data, currentPage]);
 
   const pagination = data?.pagination;
-  const totalPages = pagination?.pages ?? 1;
+  const totalPages = pagination?.totalPages ?? 1;
 
   const categories = ['All', ...Array.from(new Set(allProducts.map((p) => p.categoryName).filter(Boolean)))];
 

@@ -30,7 +30,12 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
       this.logger.log('✅ Database connected successfully');
     } catch (error) {
       this.logger.error('❌ Database connection failed', error);
-      throw error;
+      const isDev = process.env.NODE_ENV === 'development';
+      if (!isDev) {
+        throw error;
+      }
+      // In development, continue even if DB connection fails
+      this.logger.warn('⚠️ Continuing in development mode without database connection');
     }
   }
 

@@ -476,6 +476,22 @@ model FeatureFlag {
   updatedAt         DateTime @updatedAt
 }
 
+/// Search query analytics log (Module 5)
+model SearchLog {
+  id           String   @id @default(cuid())
+  query        String
+  resultsCount Int      @default(0)
+  filters      Json?
+  userId       String?
+  ipAddress    String?
+  timestamp    DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([query])
+  @@index([createdAt(sort: Desc)])
+  @@index([userId])
+}
+
 /// Product view tracking for analytics
 model ProductViewTracking {
   id           String   @id @default(cuid())

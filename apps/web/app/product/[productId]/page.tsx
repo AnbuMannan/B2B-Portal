@@ -9,6 +9,9 @@ import SellerCard from './components/SellerCard';
 import EnquiryModal from './components/EnquiryModal';
 import RelatedProducts from './components/RelatedProducts';
 import ExpandableDescription from './components/ExpandableDescription';
+import { ProductSchema } from '@/components/seo/ProductSchema';
+import { BreadcrumbSchema } from '@/components/seo/BreadcrumbSchema';
+import { generateProductMeta } from '@/lib/seo';
 
 // ISR: re-generate this page at most once per hour
 export const revalidate = 3600;
@@ -81,30 +84,8 @@ export async function generateMetadata({
   params: { productId: string };
 }): Promise<Metadata> {
   const product = await getProduct(params.productId);
-
-  if (!product) {
-    return { title: 'Product Not Found | B2B Portal' };
-  }
-
-  const lowestPrice =
-    product.pricingTiers.length > 0
-      ? Math.min(...product.pricingTiers.map((t) => t.price))
-      : null;
-
-  return {
-    title: `${product.name} - Buy from ${product.sellerCompanyName} | B2B Portal`,
-    description: `Buy ${product.name} at wholesale price from verified ${product.sellerCompanyName}.${lowestPrice ? ` Starting from ₹${lowestPrice.toLocaleString('en-IN')}.` : ''} GST verified B2B supplier. Get best quote now.`,
-    keywords: [product.name, product.sellerCompanyName, 'wholesale', 'B2B', ...product.categories],
-    openGraph: {
-      title: `${product.name} | B2B Portal`,
-      description: `Wholesale ${product.name} from verified B2B supplier — ${product.sellerCompanyName}`,
-      type: 'website',
-      images: product.images.length > 0 ? [{ url: product.images[0] }] : [],
-    },
-    alternates: {
-      canonical: `/product/${product.id}`,
-    },
-  };
+  if (!product) return { title: 'Product Not Found | B2B Portal' };
+  return generateProductMeta(product);
 }
 
 // ---------------------------------------------------------------------------
@@ -121,49 +102,11 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  const lowestPrice =
-    product.pricingTiers.length > 0
-      ? Math.min(...product.pricingTiers.map((t) => t.price))
-      : null;
-
-  // JSON-LD: Product schema
-  const productJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.name,
-    description: product.description,
-    image: product.images,
-    ...(product.hsnCode && { gtin: product.hsnCode }),
-    offers: {
-      '@type': 'AggregateOffer',
-      priceCurrency: 'INR',
-      ...(lowestPrice !== null && { lowPrice: lowestPrice }),
-      offerCount: product.pricingTiers.length,
-      seller: {
-        '@type': 'Organization',
-        name: product.sellerCompanyName,
-      },
-    },
-  };
-
-  // JSON-LD: BreadcrumbList schema
-  const breadcrumbJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: '/' },
-      ...product.categories.map((cat, i) => ({
-        '@type': 'ListItem',
-        position: i + 2,
-        name: cat,
-      })),
-      {
-        '@type': 'ListItem',
-        position: product.categories.length + 2,
-        name: product.name,
-      },
-    ],
-  };
+  const breadcrumbItems = [
+    { name: 'Home', href: '/' },
+    ...product.categories.map((cat) => ({ name: cat })),
+    { name: product.name },
+  ];
 
   return (
     <>
@@ -276,17 +219,15 @@ export default async function ProductDetailPage({
         <Footer />
       </div>
 
-      {/* JSON-LD structured data */}
-      <script
-        type="application/ld+json"
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      <ProductSchema
+        name={product.name}
+        description={product.description}
+        images={product.images}
+        sellerName={product.sellerCompanyName}
+        pricingTiers={product.pricingTiers}
+        hsnCode={product.hsnCode}
       />
-      <script
-        type="application/ld+json"
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
-      />
+      <BreadcrumbSchema items={breadcrumbItems} />
     </>
   );
 }

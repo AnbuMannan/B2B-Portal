@@ -6,7 +6,6 @@ import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import configuration from './config/configuration';
 import { DatabaseModule } from './database/database.module';
 import { FileSystemService } from './services/file-system/file-system.service';
-import { ElasticsearchService } from './services/elasticsearch/elasticsearch.service';
 import { RedisModule } from './services/redis/redis.module';
 import { HomepageModule } from './modules/homepage/homepage.module';
 import { QueueModule } from './modules/queue/queue.module';
@@ -27,7 +26,9 @@ import { CacheInvalidationService } from './common/services/cache-invalidation.s
 import { ProductsModule } from './modules/products/products.module';
 import { SellersModule } from './modules/sellers/sellers.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { SearchModule } from './modules/search/search.module';
 import { HealthModule } from './modules/health/health.module';
+import { BuyLeadsModule } from './modules/buy-leads/buy-leads.module';
 import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.interceptor';
 
 @Module({
@@ -51,6 +52,8 @@ import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.inter
     AuthModule,
     HealthModule,
     QueueModule,
+    SearchModule,
+    BuyLeadsModule,
     LeadContactModule,
     AuditModule,
     FeatureFlagsModule,
@@ -58,7 +61,6 @@ import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.inter
   controllers: [],
   providers: [
     FileSystemService,
-    ElasticsearchService,
     {
       provide: APP_GUARD,
       useClass: RoleBasedGuard,

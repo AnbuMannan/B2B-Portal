@@ -66,8 +66,14 @@ export function HeroSection() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = query.trim()
-    const url = trimmed ? `/search?type=${searchType}&q=${encodeURIComponent(trimmed)}` : `/search?type=${searchType}`
-    router.push(url)
+    if (!trimmed) return
+    if (searchType === 'products') {
+      router.push(`/search?q=${encodeURIComponent(trimmed)}`)
+    } else if (searchType === 'suppliers') {
+      router.push(`/search?q=${encodeURIComponent(trimmed)}&type=suppliers`)
+    } else {
+      router.push(`/post-requirement`)
+    }
   }
 
   return (
