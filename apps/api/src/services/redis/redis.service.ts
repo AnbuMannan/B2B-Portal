@@ -17,6 +17,8 @@ export class RedisService {
       this.client = createClient({ url });
       this.client.on('error', (err) => this.logger.error('Redis Client Error', err));
       this.client.on('connect', () => this.logger.log('✅ Redis connected'));
+    } else {
+      this.logger.log('Redis not configured — caching disabled, running without cache');
     }
   }
 
@@ -29,9 +31,10 @@ export class RedisService {
   }
 
   async get<T>(key: string): Promise<T | null> {
+    if (!this.client) return null;
     try {
-      if (!this.client?.isOpen) await this.connect();
-      const value = await this.client!.get(key);
+      if (!this.client.isOpen) await this.connect();
+      const value = await this.client.get(key);
       if (value) {
         this.logger.debug(`Cache HIT: ${key}`);
         return JSON.parse(value);
@@ -45,13 +48,14 @@ export class RedisService {
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+    if (!this.client) return;
     try {
-      if (!this.client?.isOpen) await this.connect();
+      if (!this.client.isOpen) await this.connect();
       const json = JSON.stringify(value);
       if (ttlSeconds) {
-        await this.client!.setEx(key, ttlSeconds, json);
+        await this.client.setEx(key, ttlSeconds, json);
       } else {
-        await this.client!.set(key, json);
+        await this.client.set(key, json);
       }
       this.logger.debug(`Cache SET: ${key} (TTL: ${ttlSeconds || 'none'})`);
     } catch (error) {
@@ -60,9 +64,10 @@ export class RedisService {
   }
 
   async delete(key: string): Promise<void> {
+    if (!this.client) return;
     try {
-      if (!this.client?.isOpen) await this.connect();
-      await this.client!.del(key);
+      if (!this.client.isOpen) await this.connect();
+      await this.client.del(key);
       this.logger.debug(`Cache DELETE: ${key}`);
     } catch (error) {
       this.logger.error(`Delete failed: ${key}`, error);
@@ -70,9 +75,10 @@ export class RedisService {
   }
 
   async flush(): Promise<void> {
+    if (!this.client) return;
     try {
-      if (!this.client?.isOpen) await this.connect();
-      await this.client!.flushDb();
+      if (!this.client.isOpen) await this.connect();
+      await this.client.flushDb();
       this.logger.log('✅ Redis flushed');
     } catch (error) {
       this.logger.error('Flush failed', error);
@@ -81,9 +87,10 @@ export class RedisService {
   }
 
   async incr(key: string): Promise<number> {
+    if (!this.client) return 1;
     try {
-      if (!this.client?.isOpen) await this.connect();
-      return await this.client!.incr(key);
+      if (!this.client.isOpen) await this.connect();
+      return await this.client.incr(key);
     } catch (error) {
       this.logger.error(`Incr failed: ${key}`, error);
       return 1;
@@ -91,9 +98,10 @@ export class RedisService {
   }
 
   async expire(key: string, seconds: number): Promise<void> {
+    if (!this.client) return;
     try {
-      if (!this.client?.isOpen) await this.connect();
-      await this.client!.expire(key, seconds);
+      if (!this.client.isOpen) await this.connect();
+      await this.client.expire(key, seconds);
       this.logger.debug(`Cache EXPIRE: ${key} (${seconds}s)`);
     } catch (error) {
       this.logger.error(`Expire failed: ${key}`, error);
@@ -123,9 +131,10 @@ export class RedisService {
   }
 
   async getKeys(pattern: string): Promise<string[]> {
+    if (!this.client) return [];
     try {
-      if (!this.client?.isOpen) await this.connect();
-      return await this.client!.keys(pattern);
+      if (!this.client.isOpen) await this.connect();
+      return await this.client.keys(pattern);
     } catch (error) {
       this.logger.error(`GetKeys failed with pattern: ${pattern}`, error);
       return [];
