@@ -502,6 +502,6 @@ model ProductViewTracking {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@index([productId])
+  @@unique([productId])
   @@index([lastViewedAt(sort: Desc)])
 }

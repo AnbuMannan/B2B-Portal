@@ -100,6 +100,9 @@ const mockPrisma = {
   productViewTracking: {
     findMany: jest.fn().mockResolvedValue([]),
   },
+  searchLog: {
+    create: jest.fn().mockResolvedValue({}),
+  },
 };
 
 const mockRedis = {

@@ -24,6 +24,7 @@ export class RateLimitMiddleware implements NestMiddleware {
     '/api/payment': { maxRequests: 5, windowSeconds: 300 }, // 5/5 min
     '/api/seller/recharge': { maxRequests: 5, windowSeconds: 300 }, // 5/5 min
     '/api/refund': { maxRequests: 3, windowSeconds: 300 }, // 3/5 min
+    '/api/search': { maxRequests: 30, windowSeconds: 60 },   // 30 searches/min per IP
     '/api/upload': { maxRequests: 10, windowSeconds: 3600 }, // 10/hour
     'DEFAULT': { maxRequests: 100, windowSeconds: 60 }, // 100/min
   };

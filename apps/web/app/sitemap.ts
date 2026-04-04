@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://b2b-portal.in';
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
+const API_URL = process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 
 // ISR: regenerate once per 24 hours
 export const revalidate = 86400;

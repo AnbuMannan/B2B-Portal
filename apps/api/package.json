@@ -23,8 +23,7 @@
     "db:studio": "prisma studio --schema=src/database/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=src/database/schema.prisma",
     "db:reset": "prisma migrate reset --schema=src/database/schema.prisma",
-    "db:seed": "ts-node --transpile-only src/database/seed.ts",
-    "db:seed-flags": "ts-node --transpile-only src/database/seed-feature-flags.ts"
+    "db:seed": "ts-node --transpile-only src/database/seed.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.11.0",

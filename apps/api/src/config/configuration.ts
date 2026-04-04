@@ -300,6 +300,9 @@ export default () => ({
   // Security
   security: {
     bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10),
+    encryption: {
+      key: process.env.ENCRYPTION_KEY,
+    },
   },
   
   // Logging

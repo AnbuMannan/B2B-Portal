@@ -36,13 +36,25 @@ async function seedFeatureFlags() {
       name: 'MODULE_HOMEPAGE_ENABLED',
       isEnabled: true,
       rolloutPercentage: 100,
-      targetAudience: {},
+      targetAudience: { roles: ['ADMIN', 'SELLER', 'BUYER'], userIds: [] },
     },
     {
       name: 'MODULE_ADVANCED_FILTERS_ENABLED',
       isEnabled: true,
       rolloutPercentage: 100,
-      targetAudience: {},
+      targetAudience: { roles: ['ADMIN', 'SELLER', 'BUYER'], userIds: [] },
+    },
+    {
+      name: 'MODULE_SELLER_DASHBOARD_ENABLED',
+      isEnabled: false,
+      rolloutPercentage: 0,
+      targetAudience: { roles: ['SELLER'], userIds: [] },
+    },
+    {
+      name: 'MODULE_BUYER_DASHBOARD_ENABLED',
+      isEnabled: false,
+      rolloutPercentage: 0,
+      targetAudience: { roles: ['BUYER'], userIds: [] },
     },
     {
       name: 'new_nav',
@@ -56,24 +68,37 @@ async function seedFeatureFlags() {
       rolloutPercentage: 10,
       targetAudience: { roles: ['SELLER'], userIds: [] },
     },
+    {
+      name: 'MODULE_SEARCH_ENABLED',
+      isEnabled: true,
+      rolloutPercentage: 100,
+      targetAudience: { roles: ['ADMIN', 'SELLER', 'BUYER'], userIds: [] },
+    },
+    {
+      name: 'MODULE_BUY_LEADS_ENABLED',
+      isEnabled: true,
+      rolloutPercentage: 100,
+      targetAudience: { roles: ['SELLER'], userIds: [] },
+    },
   ];
 
-  for (const f of flags) {
+  for (const flag of flags) {
     await prisma.featureFlag.upsert({
-      where: { name: f.name },
-      create: {
-        name: f.name,
-        isEnabled: f.isEnabled,
-        rolloutPercentage: f.rolloutPercentage,
-        targetAudience: f.targetAudience as any,
-      },
+      where: { name: flag.name },
       update: {
-        isEnabled: f.isEnabled,
-        rolloutPercentage: f.rolloutPercentage,
-        targetAudience: f.targetAudience as any,
+        isEnabled: flag.isEnabled,
+        rolloutPercentage: flag.rolloutPercentage,
+        targetAudience: flag.targetAudience as any,
+      },
+      create: {
+        name: flag.name,
+        isEnabled: flag.isEnabled,
+        rolloutPercentage: flag.rolloutPercentage,
+        targetAudience: flag.targetAudience as any,
       },
     });
   }
+  console.log('Feature flags seeded:', flags.length);
 }
 
 async function main() {

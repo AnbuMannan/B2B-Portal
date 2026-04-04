@@ -125,6 +125,8 @@ export class ProductsService {
             isVerified: true,
             gstNumber: true,
             iecCode: true,
+            state: true,
+            city: true,
           },
         },
         categories: {
@@ -249,6 +251,8 @@ export class ProductsService {
             isVerified: true,
             gstNumber: true,
             iecCode: true,
+            state: true,
+            city: true,
           },
         },
       },
@@ -418,6 +422,8 @@ export class ProductsService {
             isVerified: true,
             gstNumber: true,
             iecCode: true,
+            state: true,
+            city: true,
           },
         },
         categories: {
@@ -601,7 +607,7 @@ export class ProductsService {
       sellerType: product.seller.companyType,
       isVerified: product.seller.isVerified,
       pricingTiers,
-      sellerState: 'TN', // TODO: Add state field to seller model
+      sellerState: product.seller.state ?? product.seller.city ?? 'India',
       verificationBadges: this.getVerificationBadges(product.seller),
       createdAt: product.createdAt,
     };
@@ -671,21 +677,11 @@ export class ProductsService {
     // Async, non-blocking — tracking must never affect response time
     Promise.allSettled(
       productIds.map(async (productId) => {
-        const existing = await this.prisma.productViewTracking.findFirst({
+        await this.prisma.productViewTracking.upsert({
           where: { productId },
-          select: { id: true },
+          update: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
+          create: { productId, viewCount: 1, lastViewedAt: new Date() },
         });
-
-        if (existing) {
-          await this.prisma.productViewTracking.update({
-            where: { id: existing.id },
-            data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
-          });
-        } else {
-          await this.prisma.productViewTracking.create({
-            data: { productId, viewCount: 1, lastViewedAt: new Date() },
-          });
-        }
       }),
     ).catch(() => {
       // Intentional silent fail — analytics must not break main request flow

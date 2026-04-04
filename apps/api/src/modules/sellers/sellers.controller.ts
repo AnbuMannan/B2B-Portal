@@ -7,6 +7,9 @@ import {
   SellerListQueryDto,
 } from './dto/seller-profile.dto';
 
+// NOTE: Seller profile is intentionally public (no auth required) for SEO.
+// Contact details are NOT exposed here — they are gated in the ContactGate UI component.
+// If any contact fields are added to SellerProfileDto in future, add JwtAuthGuard here.
 @ApiTags('sellers')
 @Controller('sellers')
 export class SellersController {
