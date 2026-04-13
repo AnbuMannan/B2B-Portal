@@ -39,6 +39,7 @@ import { ExportQueueConsumer } from './export.queue';
       { name: 'sms' },
       { name: 'export' },
       { name: 'payments' },
+      { name: 'otp' },
     ),
   ],
   providers: [

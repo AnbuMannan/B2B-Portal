@@ -1,13 +1,20 @@
 'use client';
 
-import { formatDistanceToNow, differenceInDays } from 'date-fns';
-import { MessageCircle, Mail, Send, Globe, CheckCircle2, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  MessageCircle, Mail, Send, Globe, CheckCircle2,
+  RefreshCw, Bookmark, BookmarkCheck, Sparkles,
+} from 'lucide-react';
 import type { BuyLead } from '../BuyLeadsClient';
 
 interface LeadCardProps {
   lead: BuyLead;
   isRevealed: boolean;
+  isMatched?: boolean;
+  isSaved?: boolean;
   onReveal: () => void;
+  onToggleSave?: () => void;
   accessToken?: string;
 }
 
@@ -24,35 +31,81 @@ const CHANNEL_LABEL = {
 };
 
 const COUNTRY_FLAG: Record<string, string> = {
-  India: '🇮🇳',
-  UAE: '🇦🇪',
-  USA: '🇺🇸',
-  UK: '🇬🇧',
-  'Saudi Arabia': '🇸🇦',
-  Singapore: '🇸🇬',
-  Australia: '🇦🇺',
-  Canada: '🇨🇦',
-  Germany: '🇩🇪',
-  China: '🇨🇳',
+  India: '🇮🇳', UAE: '🇦🇪', USA: '🇺🇸', UK: '🇬🇧',
+  'Saudi Arabia': '🇸🇦', Singapore: '🇸🇬', Australia: '🇦🇺',
+  Canada: '🇨🇦', Germany: '🇩🇪', China: '🇨🇳',
 };
 
 function flag(country: string) {
   return COUNTRY_FLAG[country] ?? '🌍';
 }
 
-export function LeadCard({ lead, isRevealed, onReveal }: LeadCardProps) {
-  const expiryDays = lead.expiryDate
-    ? differenceInDays(new Date(lead.expiryDate), new Date())
-    : null;
-  const isExpiringSoon = expiryDays !== null && expiryDays < 2;
+/**
+ * Real-time countdown string updated every minute.
+ * Returns a string like "1d 4h" or "3h 22m" or "Expired".
+ */
+function useCountdown(expiryDate: string | null): { label: string; urgent: boolean } {
+  const compute = () => {
+    if (!expiryDate) return { label: '', urgent: false };
+    const ms = new Date(expiryDate).getTime() - Date.now();
+    if (ms <= 0) return { label: 'Expired', urgent: true };
+    const totalMinutes = Math.floor(ms / 60_000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const mins = totalMinutes % 60;
+    const urgent = ms < 2 * 24 * 60 * 60 * 1000; // < 2 days
+    if (days > 0) return { label: `${days}d ${hours}h left`, urgent };
+    if (hours > 0) return { label: `${hours}h ${mins}m left`, urgent };
+    return { label: `${mins}m left`, urgent: true };
+  };
 
+  const [state, setState] = useState(compute);
+
+  useEffect(() => {
+    if (!expiryDate) return;
+    const id = setInterval(() => setState(compute()), 60_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expiryDate]);
+
+  return state;
+}
+
+export function LeadCard({ lead, isRevealed, isMatched, isSaved, onReveal, onToggleSave }: LeadCardProps) {
+  const { label: countdownLabel, urgent } = useCountdown(lead.expiryDate);
   const postedAgo = formatDistanceToNow(new Date(lead.postedAt), { addSuffix: true });
 
   return (
-    <div className="flex flex-col justify-between rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200 transition-shadow hover:shadow-md">
-      {/* Top row: product name + repeat badge */}
+    <div
+      className={`relative flex flex-col justify-between rounded-xl bg-white p-5 shadow-sm ring-1 transition-shadow hover:shadow-md ${
+        isMatched ? 'ring-primary/40 shadow-primary/5' : 'ring-gray-200'
+      }`}
+    >
+      {/* Bookmark toggle */}
+      {onToggleSave && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleSave(); }}
+          className="absolute right-4 top-4 text-gray-400 hover:text-primary transition-colors"
+          title={isSaved ? 'Remove from watchlist' : 'Save to watchlist'}
+        >
+          {isSaved
+            ? <BookmarkCheck className="h-5 w-5 text-primary" />
+            : <Bookmark className="h-5 w-5" />
+          }
+        </button>
+      )}
+
       <div>
-        <div className="flex items-start justify-between gap-2">
+        {/* Matched badge */}
+        {isMatched && (
+          <div className="mb-2 flex items-center gap-1 text-xs font-medium text-primary">
+            <Sparkles className="h-3.5 w-3.5" />
+            Matches your products
+          </div>
+        )}
+
+        {/* Title row */}
+        <div className="flex items-start justify-between gap-2 pr-6">
           <h3 className="text-base font-semibold text-gray-900 leading-tight">
             {lead.productName}
           </h3>
@@ -64,13 +117,12 @@ export function LeadCard({ lead, isRevealed, onReveal }: LeadCardProps) {
           )}
         </div>
 
-        {/* Quantity + unit */}
+        {/* Quantity */}
         {(lead.quantity != null || lead.unit) && (
           <p className="mt-1 text-sm text-gray-600">
             Qty:{' '}
             <span className="font-medium">
-              {lead.quantity != null ? lead.quantity : '—'}{' '}
-              {lead.unit ?? ''}
+              {lead.quantity != null ? lead.quantity : '—'} {lead.unit ?? ''}
             </span>
           </p>
         )}
@@ -88,12 +140,10 @@ export function LeadCard({ lead, isRevealed, onReveal }: LeadCardProps) {
           <span>Posted {postedAgo}</span>
         </div>
 
-        {/* Expiry */}
-        {expiryDays !== null && (
-          <p className={`mt-1.5 text-xs font-medium ${isExpiringSoon ? 'text-red-600' : 'text-gray-400'}`}>
-            {expiryDays <= 0
-              ? 'Expired'
-              : `Expires in ${expiryDays} day${expiryDays === 1 ? '' : 's'}`}
+        {/* Live countdown */}
+        {countdownLabel && (
+          <p className={`mt-1.5 text-xs font-medium ${urgent ? 'text-red-600' : 'text-gray-400'}`}>
+            {countdownLabel}
           </p>
         )}
       </div>

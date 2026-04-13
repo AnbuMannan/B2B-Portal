@@ -1,7 +1,9 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger, INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import * as path from 'path';
 import { validateConfig } from './config/configuration';
 import { RedisService } from './services/redis/redis.service';
 // import { ElasticsearchService } from './services/elasticsearch/elasticsearch.service'; // TODO: Enable when Elasticsearch is available
@@ -22,14 +24,21 @@ async function bootstrap() {
     }
 
     // Step 2: Create the NestJS application
-    const app = await NestFactory.create(AppModule, {
+    // rawBody: true preserves req.rawBody for Razorpay webhook signature verification
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
       logger: ['log', 'error', 'warn', 'debug', 'verbose'],
       bufferLogs: true,
+      rawBody: true,
     });
 
     // Step 3: Get config service
     const configService = app.get(ConfigService);
     
+    // Step 3b: Serve uploaded files as static assets
+    // Files are stored in ./uploads/; URLs like /products/... map to ./uploads/products/...
+    const uploadsDir = path.resolve(process.cwd(), 'uploads');
+    app.useStaticAssets(uploadsDir);
+
     // Step 4: Configure global pipes and filters
     app.setGlobalPrefix('api');
     app.useGlobalPipes(

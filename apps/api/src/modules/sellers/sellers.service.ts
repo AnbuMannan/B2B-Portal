@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/database.service';
+import { RedisService } from '../../services/redis/redis.service';
 import {
   SellerProfileDto,
   SellerListItemDto,
@@ -8,26 +9,37 @@ import {
 } from './dto/seller-profile.dto';
 import { PaginatedResponseDto, PaginationMetaDto } from '../../common/dto/pagination.dto';
 
+const PROFILE_TTL = 60;   // seconds
+const LIST_TTL    = 120;  // seconds
+
 @Injectable()
 export class SellersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   async getSellerProfile(sellerId: string): Promise<SellerProfileDto> {
+    const cacheKey = `seller:profile:${sellerId}`;
+    const cached = await this.redis.get<SellerProfileDto>(cacheKey);
+    if (cached) return cached;
+
     const seller = await this.prisma.seller.findUnique({
       where: { id: sellerId },
+      select: {
+        id: true, companyName: true, companyType: true,
+        city: true, state: true, isVerified: true,
+        gstNumber: true, iecCode: true, kycStatus: true, createdAt: true,
+      },
     });
 
-    if (!seller || (seller as any).kycStatus !== 'APPROVED') {
+    if (!seller || seller.kycStatus !== 'APPROVED') {
       throw new NotFoundException('Seller not found');
     }
 
     const [productCount, viewAgg, categories, products] = await Promise.all([
       this.prisma.product.count({
-        where: {
-          sellerId,
-          isActive: true,
-          adminApprovalStatus: 'APPROVED' as any,
-        },
+        where: { sellerId, isActive: true, adminApprovalStatus: 'APPROVED' as any },
       }),
 
       this.prisma.productViewTracking.aggregate({
@@ -36,39 +48,35 @@ export class SellersService {
       }),
 
       this.prisma.category.findMany({
-        where: {
-          productLinks: {
-            some: { product: { sellerId, isActive: true } },
-          },
-        },
+        where: { productLinks: { some: { product: { sellerId, isActive: true } } } },
         select: { industryType: true },
       }),
 
+      // select instead of include + no take:1 on nested relation → Prisma batches in 3 queries
       this.prisma.product.findMany({
-        where: {
-          sellerId,
-          isActive: true,
-          adminApprovalStatus: 'APPROVED' as any,
-        },
+        where: { sellerId, isActive: true, adminApprovalStatus: 'APPROVED' as any },
         orderBy: { createdAt: 'desc' },
         take: 6,
-        include: {
+        select: {
+          id: true,
+          name: true,
+          images: true,
+          multiTierPricing: true,
           categories: {
-            include: { category: true },
-            take: 1,
+            select: { category: { select: { name: true } } },
           },
         },
       }),
     ]);
 
     const badges: string[] = [];
-    if ((seller as any).isVerified) badges.push('VERIFIED_SELLER');
-    if ((seller as any).gstNumber) badges.push('GST_VERIFIED');
-    if ((seller as any).iecCode) badges.push('IEC_GLOBAL');
+    if (seller.isVerified)  badges.push('VERIFIED_SELLER');
+    if (seller.gstNumber)   badges.push('GST_VERIFIED');
+    if (seller.iecCode)     badges.push('IEC_GLOBAL');
 
     const yearsInBusiness = Math.max(
       1,
-      Math.floor((Date.now() - (seller as any).createdAt.getTime()) / 31536000000),
+      Math.floor((Date.now() - seller.createdAt.getTime()) / 31536000000),
     );
 
     const industryTypes = [
@@ -83,13 +91,13 @@ export class SellersService {
       categoryName: p.categories[0]?.category?.name ?? '',
     }));
 
-    return {
+    const result: SellerProfileDto = {
       id: seller.id,
-      companyName: (seller as any).companyName,
-      companyType: (seller as any).companyType,
-      city: (seller as any).city ?? null,
-      state: (seller as any).state ?? null,
-      companyInitials: (seller as any).companyName.slice(0, 2).toUpperCase(),
+      companyName: seller.companyName,
+      companyType: seller.companyType,
+      city: seller.city ?? null,
+      state: seller.state ?? null,
+      companyInitials: seller.companyName.slice(0, 2).toUpperCase(),
       badges,
       yearsInBusiness,
       productCount,
@@ -97,15 +105,17 @@ export class SellersService {
       industryTypes,
       cataloguePreview,
     };
+
+    await this.redis.set(cacheKey, result, PROFILE_TTL);
+    return result;
   }
 
   async getSellerProducts(
     sellerId: string,
     query: SellerProductsQueryDto,
   ): Promise<PaginatedResponseDto<any>> {
-    const page = query.page ?? 1;
+    const page  = query.page  ?? 1;
     const limit = query.limit ?? 12;
-    const sortBy = query.sortBy ?? 'newest';
 
     const where = {
       sellerId,
@@ -113,21 +123,21 @@ export class SellersService {
       adminApprovalStatus: 'APPROVED' as any,
     };
 
-    const orderBy = sortBy === 'price-asc' || sortBy === 'price-desc'
-      ? { createdAt: 'desc' as const }
-      : { createdAt: 'desc' as const };
-
     const [total, products] = await Promise.all([
       this.prisma.product.count({ where }),
       this.prisma.product.findMany({
         where,
-        orderBy,
+        orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: {
+        // select only what the UI needs + no take:1 on nested → 3 queries total, not N+1
+        select: {
+          id: true,
+          name: true,
+          images: true,
+          multiTierPricing: true,
           categories: {
-            include: { category: true },
-            take: 1,
+            select: { category: { select: { name: true } } },
           },
         },
       }),
@@ -147,20 +157,17 @@ export class SellersService {
   async getSellersList(
     query: SellerListQueryDto,
   ): Promise<PaginatedResponseDto<SellerListItemDto>> {
-    const page = query.page ?? 1;
+    const page  = query.page  ?? 1;
     const limit = query.limit ?? 20;
 
-    const where: any = {
-      isVerified: true,
-      kycStatus: 'APPROVED',
-    };
+    const where: any = { isVerified: true, kycStatus: 'APPROVED' };
+    if (query.search) where.companyName = { contains: query.search, mode: 'insensitive' };
+    if (query.state)  where.state = query.state;
 
-    if (query.search) {
-      where.companyName = { contains: query.search, mode: 'insensitive' };
-    }
-    if (query.state) {
-      where.state = query.state;
-    }
+    // Cache paginated list (no user-specific data)
+    const cacheKey = `sellers:list:${page}:${limit}:${query.search ?? ''}:${query.state ?? ''}`;
+    const cached = await this.redis.get<PaginatedResponseDto<SellerListItemDto>>(cacheKey);
+    if (cached) return cached;
 
     const [total, sellers] = await Promise.all([
       this.prisma.seller.count({ where }),
@@ -169,12 +176,19 @@ export class SellersService {
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { companyName: 'asc' },
-        include: {
+        // select only the 7 fields needed — avoids fetching all 30+ columns
+        select: {
+          id: true,
+          companyName: true,
+          city: true,
+          state: true,
+          isVerified: true,
+          gstNumber: true,
+          iecCode: true,
+          createdAt: true,
           _count: {
             select: {
-              products: {
-                where: { isActive: true, adminApprovalStatus: 'APPROVED' as any },
-              },
+              products: { where: { isActive: true, adminApprovalStatus: 'APPROVED' as any } },
             },
           },
         },
@@ -184,8 +198,8 @@ export class SellersService {
     const data: SellerListItemDto[] = (sellers as any[]).map((s) => {
       const badges: string[] = [];
       if (s.isVerified) badges.push('VERIFIED_SELLER');
-      if (s.gstNumber) badges.push('GST_VERIFIED');
-      if (s.iecCode) badges.push('IEC_GLOBAL');
+      if (s.gstNumber)  badges.push('GST_VERIFIED');
+      if (s.iecCode)    badges.push('IEC_GLOBAL');
 
       return {
         id: s.id,
@@ -202,7 +216,9 @@ export class SellersService {
       };
     });
 
-    return new PaginatedResponseDto(data, new PaginationMetaDto(page, limit, total));
+    const result = new PaginatedResponseDto(data, new PaginationMetaDto(page, limit, total));
+    await this.redis.set(cacheKey, result, LIST_TTL);
+    return result;
   }
 
   async getSitemapSellerIds(): Promise<string[]> {

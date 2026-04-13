@@ -85,8 +85,9 @@ export class CacheInterceptor implements NestInterceptor {
   }
 
   /**
-   * Build cache key from request
-   * Includes method, path, query params for uniqueness
+   * Build cache key from request.
+   * Includes method, path, query params, and user ID for uniqueness.
+   * User ID is required so /api/seller/wallet doesn't serve user A's data to user B.
    */
   private buildCacheKey(request: Request): string {
     const { method, path, query } = request;
@@ -97,8 +98,11 @@ export class CacheInterceptor implements NestInterceptor {
       .map((key) => `${key}=${query[key]}`)
       .join('&');
 
-    const key = `cache:${method}:${path}${queryString ? '?' + queryString : ''}`;
-    return key;
+    // Include user ID for authenticated routes to prevent cross-user cache hits
+    const userId = (request as any).user?.id;
+    const userPart = userId ? `:u:${userId}` : '';
+
+    return `cache:${method}:${path}${userPart}${queryString ? '?' + queryString : ''}`;
   }
 
   /**

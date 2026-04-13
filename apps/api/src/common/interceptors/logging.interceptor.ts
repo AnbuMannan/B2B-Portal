@@ -73,24 +73,26 @@ export class LoggingInterceptor implements NestInterceptor {
     const startTime = Date.now();
     const { method, url, ip } = request;
 
-    // Log incoming request
+    const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+
+    // For GETs, skip body/header cloning entirely — just log method+url.
+    // For mutations, log the sanitized body (cloning only what's needed).
     this.winstonLogger.info('Incoming Request', {
       type: 'REQUEST',
       requestId,
       method,
       url,
-      query: request.query,
-      body: this.sanitizeData(request.body),
-      headers: this.sanitizeHeaders(request.headers),
       ip,
       userAgent: request.get('user-agent'),
       timestamp: new Date().toISOString(),
+      // Only pay the clone+sanitize cost for mutations that carry a body
+      ...(isMutation && request.body ? { body: this.sanitizeData(request.body) } : {}),
     });
 
     return next.handle().pipe(
       tap(() => {
         const duration = Date.now() - startTime;
-        
+
         this.winstonLogger.info('Outgoing Response', {
           type: 'RESPONSE',
           requestId,
@@ -103,16 +105,13 @@ export class LoggingInterceptor implements NestInterceptor {
           timestamp: new Date().toISOString(),
         });
 
-        // Warn if response time is slow
         if (duration > 1000) {
-          this.logger.warn(
-            `Slow endpoint detected: ${method} ${url} took ${duration}ms`,
-          );
+          this.logger.warn(`Slow endpoint: ${method} ${url} took ${duration}ms`);
         }
       }),
       catchError((error: any) => {
         const duration = Date.now() - startTime;
-        
+
         this.winstonLogger.error('Request Error', {
           type: 'ERROR',
           requestId,

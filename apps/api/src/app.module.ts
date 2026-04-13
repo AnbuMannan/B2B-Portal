@@ -29,6 +29,11 @@ import { AuthModule } from './modules/auth/auth.module';
 import { SearchModule } from './modules/search/search.module';
 import { HealthModule } from './modules/health/health.module';
 import { BuyLeadsModule } from './modules/buy-leads/buy-leads.module';
+import { SellerKycModule } from './modules/seller-kyc/seller-kyc.module';
+import { UploadModule } from './modules/upload/upload.module';
+import { SellerProductsModule } from './modules/seller-products/seller-products.module';
+import { WalletModule } from './modules/wallet/wallet.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.interceptor';
 
 @Module({
@@ -54,6 +59,11 @@ import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.inter
     QueueModule,
     SearchModule,
     BuyLeadsModule,
+    SellerKycModule,
+    UploadModule,
+    SellerProductsModule,
+    WalletModule,
+    WebhooksModule,
     LeadContactModule,
     AuditModule,
     FeatureFlagsModule,
@@ -106,6 +116,17 @@ import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.inter
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RateLimitMiddleware).forRoutes('*');
+    // Apply custom rate limiting ONLY to sensitive routes.
+    // General routes are protected by ThrottlerModule (100 req/min) already.
+    // Applying to '*' was adding 2 Redis calls to every single request.
+    consumer.apply(RateLimitMiddleware).forRoutes(
+      'api/auth/login',
+      'api/auth/register',
+      'api/auth/forgot-password',
+      'api/auth/reset-password',
+      'api/seller/wallet',
+      'api/search',
+      'api/upload',
+    );
   }
 }

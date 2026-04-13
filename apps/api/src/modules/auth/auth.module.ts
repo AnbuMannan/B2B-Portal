@@ -6,6 +6,8 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { DatabaseModule } from '../../database/database.module';
+import { RedisModule } from '../../services/redis/redis.module';
+import { QueueModule } from '../queue/queue.module';
 
 @Module({
   imports: [
@@ -16,11 +18,13 @@ import { DatabaseModule } from '../../database/database.module';
         secret:
           configService.get<string>('JWT_SECRET') ??
           'dev-secret-change-in-production-min-32-chars',
-        signOptions: { expiresIn: '1h' },
+        signOptions: { expiresIn: '15m' },
       }),
       inject: [ConfigService],
     }),
     DatabaseModule,
+    RedisModule,
+    QueueModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

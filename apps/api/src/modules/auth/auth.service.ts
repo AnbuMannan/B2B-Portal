@@ -3,15 +3,29 @@ import {
   ConflictException,
   UnauthorizedException,
   ForbiddenException,
+  BadRequestException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 import { PrismaService } from '../../database/database.service';
+import { RedisService } from '../../services/redis/redis.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 const BCRYPT_ROUNDS = 12;
+const OTP_TTL_SECONDS = 300; // 5 minutes
+const REFRESH_TOKEN_DAYS = 7;
+const ACCESS_TOKEN_MINUTES = 24 * 60; // 24 hours
 
 @Injectable()
 export class AuthService {
@@ -20,6 +34,10 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+    private readonly redis: RedisService,
+    @InjectQueue('sms') private readonly smsQueue: Queue,
+    @InjectQueue('email') private readonly emailQueue: Queue,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -45,27 +63,52 @@ export class AuthService {
         phoneNumber: dto.phoneNumber ?? null,
         passwordHash,
         role: role as any,
+        phoneVerified: false,
       },
-      select: { id: true, email: true, role: true },
+      select: { id: true, email: true, role: true, phoneNumber: true },
     });
 
-    // Auto-create buyer profile for BUYER role
+    // Auto-create buyer profile
     if (user.role === 'BUYER') {
       await this.prisma.buyer.create({
-        data: {
-          userId: user.id,
-          businessType: 'CONSUMER' as any,
-        },
+        data: { userId: user.id, businessType: 'CONSUMER' as any },
       });
     }
 
-    this.logger.log(`New user registered: ${user.email} (${user.role})`);
+    // Send OTP if phone provided
+    if (user.phoneNumber) {
+      await this.sendOtp(user.id, user.phoneNumber);
+      this.logger.log(`OTP queued for new user: ${user.email}`);
+      return { userId: user.id, message: `OTP sent to ${this.maskPhone(user.phoneNumber)}` };
+    }
 
-    const accessToken = this.signToken(user.id, user.email, user.role);
-    return {
-      accessToken,
-      user: { id: user.id, email: user.email, role: user.role },
-    };
+    // No phone — skip OTP, issue tokens directly
+    const tokens = await this.issueTokens(user.id, user.email, user.role);
+    return { ...tokens, user: { id: user.id, email: user.email, role: user.role } };
+  }
+
+  async verifyOtp(dto: VerifyOtpDto) {
+    const otpKey = `otp:${dto.userId}`;
+    const storedOtp = await this.redis.get<string>(otpKey);
+
+    if (!storedOtp || storedOtp !== dto.otp) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    // Mark phone as verified
+    const user = await this.prisma.user.update({
+      where: { id: dto.userId },
+      data: { phoneVerified: true },
+      select: { id: true, email: true, role: true },
+    });
+
+    // Invalidate OTP
+    await this.redis.delete(otpKey);
+
+    // Issue tokens after OTP verification
+    const tokens = await this.issueTokens(user.id, user.email, user.role);
+    this.logger.log(`Phone verified for user: ${user.email}`);
+    return { ...tokens, user: { id: user.id, email: user.email, role: user.role } };
   }
 
   async login(dto: LoginDto) {
@@ -84,18 +127,99 @@ export class AuthService {
     }
 
     this.logger.log(`User logged in: ${user.email}`);
-
-    const accessToken = this.signToken(user.id, user.email, user.role);
-    return {
-      accessToken,
-      user: { id: user.id, email: user.email, role: user.role },
-    };
+    const tokens = await this.issueTokens(user.id, user.email, user.role);
+    return { ...tokens, user: { id: user.id, email: user.email, role: user.role } };
   }
 
-  /**
-   * Find buyer profile by userId — used by products enquiry endpoint.
-   * Throws ForbiddenException if buyer profile doesn't exist (e.g. SELLER trying to enquire).
-   */
+  async refreshToken(dto: RefreshTokenDto) {
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { token: dto.refreshToken },
+      include: { user: { select: { id: true, email: true, role: true, isActive: true } } },
+    });
+
+    if (!stored || stored.isRevoked || stored.expiresAt < new Date()) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    if (!stored.user.isActive) {
+      throw new UnauthorizedException('User account is inactive');
+    }
+
+    // Revoke old token (rotation)
+    await this.prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { isRevoked: true },
+    });
+
+    const tokens = await this.issueTokens(stored.user.id, stored.user.email, stored.user.role);
+    return tokens;
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, email: true },
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      return { message: 'If that email is registered, a reset link has been sent' };
+    }
+
+    const resetToken = uuidv4();
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetToken: resetToken, passwordResetExpiry: expiry },
+    });
+
+    await this.emailQueue.add('password-reset', {
+      to: user.email,
+      resetToken,
+      resetUrl: `${this.configService.get('app.frontendUrl') || 'http://localhost:3000'}/auth/reset-password?token=${resetToken}`,
+      requestId: uuidv4(),
+    });
+
+    this.logger.log(`Password reset email queued for: ${user.email}`);
+    return { message: 'If that email is registered, a reset link has been sent' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        passwordResetToken: dto.token,
+        passwordResetExpiry: { gt: new Date() },
+      },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpiry: null,
+      },
+    });
+
+    // Revoke all refresh tokens on password reset
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: user.id },
+      data: { isRevoked: true },
+    });
+
+    this.logger.log(`Password reset for: ${user.email}`);
+    return { message: 'Password reset successful. Please log in with your new password.' };
+  }
+
+  /** Find buyer profile by userId — used by products enquiry endpoint. */
   async getBuyerByUserId(userId: string) {
     const buyer = await this.prisma.buyer.findUnique({
       where: { userId },
@@ -111,7 +235,47 @@ export class AuthService {
     return buyer;
   }
 
-  private signToken(userId: string, email: string, role: string): string {
-    return this.jwtService.sign({ sub: userId, email, role });
+  // ─── Private helpers ───────────────────────────────────────────────────────
+
+  private async sendOtp(userId: string, phoneNumber: string): Promise<void> {
+    const otp = this.generateOtp();
+    const otpKey = `otp:${userId}`;
+
+    await this.redis.set(otpKey, otp, OTP_TTL_SECONDS);
+
+    await this.smsQueue.add('send-otp', {
+      to: phoneNumber,
+      otp,
+      templateId: process.env.MSG91_OTP_TEMPLATE_ID || 'default-otp',
+      requestId: uuidv4(),
+    });
+  }
+
+  private async issueTokens(
+    userId: string,
+    email: string,
+    role: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const accessToken = this.jwtService.sign(
+      { sub: userId, email, role },
+      { expiresIn: `${ACCESS_TOKEN_MINUTES}m` },
+    );
+
+    const refreshToken = uuidv4();
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+
+    await this.prisma.refreshToken.create({
+      data: { userId, token: refreshToken, expiresAt },
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  private generateOtp(): string {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  private maskPhone(phone: string): string {
+    return phone.replace(/(\d{2})\d{6}(\d{2})/, '$1XXXXXX$2');
   }
 }

@@ -25,6 +25,14 @@ enum CompanyType {
   LLP
 }
 
+/// Seller business model (Module 8)
+enum BusinessModel {
+  MANUFACTURER
+  WHOLESALER
+  DISTRIBUTOR
+  RETAILER
+}
+
 /// KYC status for sellers
 enum KycStatus {
   PENDING
@@ -108,18 +116,23 @@ enum AuditAction {
 /// - Purpose: Stores platform users (buyers, sellers, admins)
 /// - Relationships: One-to-many with Sellers, Buyers, and AdminApprovals (as admin)
 model User {
-  id           String         @id @default(cuid())
-  email        String         @unique
-  phoneNumber  String?        @unique
-  passwordHash String
-  role         Role           @default(BUYER)
-  isActive     Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  deletedAt    DateTime?
+  id              String    @id @default(cuid())
+  email           String    @unique
+  phoneNumber     String?   @unique
+  passwordHash    String
+  role            Role      @default(BUYER)
+  isActive        Boolean   @default(true)
+  phoneVerified   Boolean   @default(false)
+  passwordResetToken  String?
+  passwordResetExpiry DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   sellers          Seller[]
   buyers           Buyer[]
+  refreshTokens    RefreshToken[]
+  notifications    Notification[]
   adminApprovals   AdminApproval[]  @relation("AdminApprovalsByAdmin")
   approvedProducts Product[]        @relation("ProductApprovedBy")
   auditLogs        AuditLog[]
@@ -147,13 +160,24 @@ model Seller {
   approvalDate  DateTime?
   rejectionReason String?
 
-  // ADD THESE NEW FIELDS: 
+  // Address fields
   registeredOfficeAddress String?
   businessOfficeAddress   String?
-  city                     String?
-  state                    String?   // <-- CRITICAL: Required for Module 2 state filtering 
-  pincode                  String?
-  country                  String    @default("India")
+  city                    String?
+  state                   String?   // Required for Module 2 state filtering
+  pincode                 String?
+  country                 String    @default("India")
+
+  // Module 8 KYC fields
+  industryType            String[]
+  businessModel           BusinessModel?
+  hasIEC                  Boolean   @default(false)
+  udyamNumber             String?
+  directorName            String?
+  directorDesignation     String?
+  directorPan             String?
+  directorPhoto           String?
+  aadhaarLastFour         String?   // UIDAI: only last 4 digits stored
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -165,6 +189,8 @@ model Seller {
   orders              Order[]            @relation("OrdersBySeller")
   quotes              Quote[]
   creditTransactions  LeadCreditTransaction[]
+  kycDocuments        SellerKycDocument[]
+  savedLeads          SellerSavedLead[]
 
   @@index([gstNumber, panNumber])
   @@index([isVerified, kycStatus])
@@ -207,6 +233,7 @@ model Category {
   createdAt    DateTime    @default(now())
 
   productLinks ProductCategory[]
+  buyLeads     BuyLead[]
 }
 
 /// Products table
@@ -276,11 +303,17 @@ model BuyLead {
   expiresAt        DateTime?
   deletedAt        DateTime?
 
+  /// Category for smart seller-matching (Module 12)
+  categoryId     String?
+  category       Category?           @relation(fields: [categoryId], references: [id])
+
   contactReveals LeadContactReveal[]
+  savedBy        SellerSavedLead[]
 
   @@index([buyerId])
   @@index([expiryDate])
   @@index([createdAt(sort: Desc)])
+  @@index([categoryId, isOpen, expiryDate])
 }
 
 /// Lead credit wallet for sellers
@@ -302,20 +335,43 @@ model LeadCreditWallet {
 
 /// Transactions in the lead credit wallet
 model LeadCreditTransaction {
-  id          String             @id @default(cuid())
-  sellerId    String
-  seller      Seller             @relation(fields: [sellerId], references: [id])
-  walletId    String?
-  wallet      LeadCreditWallet?  @relation(fields: [walletId], references: [id])
-  type        LeadCreditTxnType
-  amount      Decimal            @db.Decimal(18, 2)
-  orderId     String?
-  timestamp   DateTime           @default(now())
-  referenceId String             @unique
-  createdAt   DateTime           @default(now())
+  id                 String             @id @default(cuid())
+  sellerId           String
+  seller             Seller             @relation(fields: [sellerId], references: [id])
+  walletId           String?
+  wallet             LeadCreditWallet?  @relation(fields: [walletId], references: [id])
+  type               LeadCreditTxnType
+  /// Number of credits purchased or spent
+  credits            Int                @default(0)
+  /// Legacy: total amount field (kept for backward compat)
+  amount             Decimal            @db.Decimal(18, 2)
+  /// Pre-GST base amount (for PURCHASE transactions)
+  baseAmount         Decimal?           @db.Decimal(18, 2)
+  /// GST amount at 18% (for PURCHASE transactions)
+  gstAmount          Decimal?           @db.Decimal(18, 2)
+  /// Total charged including GST
+  totalAmount        Decimal?           @db.Decimal(18, 2)
+  /// Credit pack identifier (starter | standard | pro | enterprise)
+  packId             String?
+  /// Razorpay order ID created before payment
+  razorpayOrderId    String?
+  /// Razorpay payment ID — unique, used as idempotency key
+  razorpayPaymentId  String?            @unique
+  /// Transaction status
+  status             String             @default("COMPLETED")
+  /// Path to generated GST invoice file
+  invoicePath        String?
+  /// Formatted invoice number: B2B-YYYY-MM-NNNN
+  invoiceNumber      String?
+  orderId            String?
+  timestamp          DateTime           @default(now())
+  referenceId        String?            @unique
+  createdAt          DateTime           @default(now())
 
   @@index([sellerId, type])
   @@index([walletId])
+  @@index([razorpayOrderId])
+  @@index([status])
 }
 
 /// Contact reveal records when a seller spends credits to view buyer details
@@ -331,10 +387,14 @@ model LeadContactReveal {
   buyerWhatsapp     String
   buyerGstin        String?
   creditDeducted    Boolean   @default(true)
+  /// Module 12: seller marks whether this reveal led to a conversion
+  convertedToOrder  Boolean   @default(false)
+  convertedAt       DateTime?
   timestamp         DateTime  @default(now())
   createdAt         DateTime  @default(now())
 
   @@index([sellerId, buyLeadId])
+  @@index([sellerId, convertedToOrder])
 }
 
 /// Orders between buyers and sellers
@@ -492,6 +552,19 @@ model SearchLog {
   @@index([userId])
 }
 
+/// Seller watchlist — saved buy leads (no credit cost, Module 12)
+model SellerSavedLead {
+  id       String   @id @default(cuid())
+  sellerId String
+  seller   Seller   @relation(fields: [sellerId], references: [id])
+  leadId   String
+  lead     BuyLead  @relation(fields: [leadId], references: [id])
+  savedAt  DateTime @default(now())
+
+  @@unique([sellerId, leadId])
+  @@index([sellerId, savedAt(sort: Desc)])
+}
+
 /// Product view tracking for analytics
 model ProductViewTracking {
   id           String   @id @default(cuid())
@@ -504,4 +577,52 @@ model ProductViewTracking {
 
   @@unique([productId])
   @@index([lastViewedAt(sort: Desc)])
+}
+
+/// In-app notifications for sellers and buyers (Module 9)
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String   // KYC_APPROVED | KYC_REJECTED | NEW_ORDER | NEW_LEAD | LOW_BALANCE | PRODUCT_APPROVED | GENERAL
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  link      String?  // deep-link to relevant page
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// Refresh tokens for sliding JWT sessions (Module 8)
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+/// KYC documents uploaded by sellers (Module 8)
+/// Files stored on server disk, NOT publicly accessible
+model SellerKycDocument {
+  id           String   @id @default(cuid())
+  sellerId     String
+  seller       Seller   @relation(fields: [sellerId], references: [id])
+  documentType String   // GST_CERTIFICATE | PAN_CARD | IEC_CERTIFICATE | UDYAM | ISO | DRUG_LICENCE | FSSAI | DIRECTOR_PHOTO
+  fileUrl      String   // Server path (private)
+  fileName     String
+  fileSize     Int      // bytes
+  mimeType     String
+  uploadedAt   DateTime @default(now())
+
+  @@index([sellerId, documentType])
 }

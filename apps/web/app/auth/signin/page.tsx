@@ -1,7 +1,6 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -15,10 +14,12 @@ const signInSchema = z.object({
 
 type SignInForm = z.infer<typeof signInSchema>;
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
+
 function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnUrl = searchParams.get('returnUrl') ?? searchParams.get('callbackUrl') ?? '/';
+  const returnUrl = searchParams.get('returnUrl') ?? searchParams.get('callbackUrl') ?? '';
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -32,19 +33,40 @@ function SignInContent() {
   const onSubmit = async (data: SignInForm) => {
     setServerError(null);
 
-    const result = await signIn('credentials', {
-      email: data.email,
-      password: data.password,
-      redirect: false,
-    });
+    try {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email, password: data.password }),
+      });
 
-    if (result?.error) {
-      setServerError('Invalid email or password. Please try again.');
-      return;
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        setServerError(json.message ?? 'Invalid email or password. Please try again.');
+        return;
+      }
+
+      const { accessToken, refreshToken, user } = json.data;
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+
+      // Redirect based on role
+      if (returnUrl) {
+        router.push(returnUrl);
+        return;
+      }
+
+      if (user.role === 'SELLER') {
+        router.push('/seller/dashboard');
+      } else if (user.role === 'ADMIN') {
+        router.push('/admin/dashboard');
+      } else {
+        router.push('/');
+      }
+    } catch {
+      setServerError('Unable to connect. Please check your connection and try again.');
     }
-
-    router.push(returnUrl);
-    router.refresh();
   };
 
   return (
@@ -59,7 +81,7 @@ function SignInContent() {
         <p className="mt-2 text-center text-sm text-gray-600">
           Don&apos;t have an account?{' '}
           <Link
-            href={`/auth/signup${returnUrl !== '/' ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ''}`}
+            href={`/auth/signup${returnUrl ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ''}`}
             className="font-medium text-blue-600 hover:text-blue-500"
           >
             Register free
@@ -108,6 +130,16 @@ function SignInContent() {
               {errors.password && (
                 <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
               )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div />
+              <Link
+                href="/auth/forgot-password"
+                className="text-xs text-blue-600 hover:text-blue-500"
+              >
+                Forgot password?
+              </Link>
             </div>
 
             <button

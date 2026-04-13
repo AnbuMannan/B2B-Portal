@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { Phone, Mail, MessageCircle, Download, Search, Copy } from 'lucide-react';
+import {
+  Phone, Mail, MessageCircle, Download, Search, Copy,
+  TrendingUp, CheckCircle2,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { RevealedContact } from '../BuyLeadsClient';
 
@@ -13,6 +16,12 @@ interface RevealedLeadsResponse {
   total: number;
   page: number;
   totalPages: number;
+}
+
+interface ConversionRate {
+  totalReveals: number;
+  converted: number;
+  conversionRate: number;
 }
 
 interface MyRevealedLeadsProps {
@@ -30,6 +39,8 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [conversionRate, setConversionRate] = useState<ConversionRate | null>(null);
+  const [convertingIds, setConvertingIds] = useState<Set<string>>(new Set());
 
   const fetchReveals = useCallback(
     async (pageNum = 1, reset = false) => {
@@ -60,9 +71,56 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
     [accessToken, search],
   );
 
+  const fetchConversionRate = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/seller/leads/conversion-rate`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const json = await res.json();
+      if (res.ok) setConversionRate(json.data);
+    } catch { /* non-critical */ }
+  }, [accessToken]);
+
   useEffect(() => {
     fetchReveals(1, true);
-  }, [fetchReveals]);
+    fetchConversionRate();
+  }, [fetchReveals, fetchConversionRate]);
+
+  // ── Mark as Converted ─────────────────────────────────────────────────────
+
+  const handleMarkConverted = async (reveal: RevealedContact) => {
+    if (!accessToken || convertingIds.has(reveal.id)) return;
+
+    setConvertingIds((prev) => new Set([...prev, reveal.id]));
+
+    try {
+      const res = await fetch(`${API_BASE}/api/seller/leads/${reveal.buyLeadId}/convert`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message ?? 'Failed to mark converted');
+
+      if (json.data?.alreadyMarked) {
+        toast('Already marked as converted');
+      } else {
+        toast.success('Marked as converted!');
+        // Update local state
+        setReveals((prev) =>
+          prev.map((r) =>
+            r.id === reveal.id ? { ...r, convertedToOrder: true, convertedAt: new Date().toISOString() } : r
+          )
+        );
+        // Refresh conversion rate
+        fetchConversionRate();
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to mark converted');
+    } finally {
+      setConvertingIds((prev) => { const s = new Set(prev); s.delete(reveal.id); return s; });
+    }
+  };
 
   // ── CSV export ────────────────────────────────────────────────────────────
 
@@ -71,7 +129,7 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
 
     const headers = [
       'Product Name', 'Quantity', 'Unit', 'Country',
-      'Phone', 'Email', 'WhatsApp', 'GSTIN', 'Revealed At',
+      'Phone', 'Email', 'WhatsApp', 'GSTIN', 'Revealed At', 'Converted',
     ];
 
     const rows = reveals.map((r) => [
@@ -84,6 +142,7 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
       r.buyerWhatsapp,
       r.buyerGstin ?? '',
       format(new Date(r.revealedAt), 'dd/MM/yyyy HH:mm'),
+      r.convertedToOrder ? 'Yes' : 'No',
     ]);
 
     const csv = [headers, ...rows]
@@ -101,6 +160,21 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
 
   return (
     <div>
+      {/* Conversion rate stat */}
+      {conversionRate && conversionRate.totalReveals > 0 && (
+        <div className="mb-5 flex items-center gap-3 rounded-xl bg-green-50 border border-green-100 p-4">
+          <TrendingUp className="h-5 w-5 text-green-600 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-green-800">
+              {conversionRate.conversionRate}% conversion rate
+            </p>
+            <p className="text-xs text-green-600">
+              {conversionRate.converted} of {conversionRate.totalReveals} revealed leads converted to orders
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
@@ -145,18 +219,31 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
             {reveals.map((r) => (
               <div
                 key={r.id}
-                className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200"
+                className={`rounded-xl bg-white p-5 shadow-sm ring-1 transition-colors ${
+                  r.convertedToOrder ? 'ring-green-200 bg-green-50/30' : 'ring-gray-200'
+                }`}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   {/* Lead info */}
                   <div>
-                    <p className="font-semibold text-gray-900">{r.lead?.productName ?? 'Unknown Product'}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-gray-900">{r.lead?.productName ?? 'Unknown Product'}</p>
+                      {r.convertedToOrder && (
+                        <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Converted
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">
                       {r.lead?.quantity != null ? `${r.lead.quantity} ${r.lead.unit ?? ''}` : ''}
                       {r.lead?.expectedCountry ? ` · ${r.lead.expectedCountry}` : ''}
                     </p>
                     <p className="mt-0.5 text-xs text-gray-400">
                       Revealed {format(new Date(r.revealedAt), 'dd MMM yyyy, HH:mm')}
+                      {r.convertedAt && (
+                        <> · Converted {format(new Date(r.convertedAt), 'dd MMM yyyy')}</>
+                      )}
                     </p>
                   </div>
 
@@ -192,6 +279,20 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
                     <span className="font-mono">{r.buyerGstin}</span>
                     <button onClick={() => copy(r.buyerGstin!)} className="text-gray-400 hover:text-gray-600">
                       <Copy className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Mark as Converted CTA */}
+                {!r.convertedToOrder && (
+                  <div className="mt-3 border-t border-gray-100 pt-3">
+                    <button
+                      onClick={() => handleMarkConverted(r)}
+                      disabled={convertingIds.has(r.id)}
+                      className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-green-600 transition-colors disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {convertingIds.has(r.id) ? 'Saving...' : 'Mark as Converted'}
                     </button>
                   </div>
                 )}

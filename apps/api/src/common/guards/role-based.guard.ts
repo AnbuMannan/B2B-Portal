@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../../database/database.service';
+import { RedisService } from '../../services/redis/redis.service';
 
 /**
  * Global guard that enforces @Roles() decorator.
@@ -25,10 +26,14 @@ import { PrismaService } from '../../database/database.service';
 export class RoleBasedGuard implements CanActivate {
   private readonly logger = new Logger(RoleBasedGuard.name);
 
+  // Cache TTL for user lookups — 5 minutes. Short enough that role changes propagate quickly.
+  private readonly USER_CACHE_TTL = 300;
+
   constructor(
     private readonly reflector: Reflector,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -67,10 +72,22 @@ export class RoleBasedGuard implements CanActivate {
         throw new UnauthorizedException('Invalid or expired token');
       }
 
-      const dbUser = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
-        select: { id: true, email: true, role: true, isActive: true },
-      });
+      // Try Redis cache before hitting the DB — eliminates a DB round-trip on every request
+      type CachedUser = { id: string; email: string; role: string; isActive: boolean };
+      const cacheKey = `auth:user:${payload.sub}`;
+      let dbUser = await this.redis.get<CachedUser>(cacheKey);
+
+      if (!dbUser) {
+        dbUser = await this.prisma.user.findUnique({
+          where: { id: payload.sub },
+          select: { id: true, email: true, role: true, isActive: true },
+        });
+
+        if (dbUser?.isActive) {
+          // Only cache active users; inactive users should fail fast without cache
+          await this.redis.set(cacheKey, dbUser, this.USER_CACHE_TTL);
+        }
+      }
 
       if (!dbUser || !dbUser.isActive) {
         throw new UnauthorizedException('User account not found or inactive');
