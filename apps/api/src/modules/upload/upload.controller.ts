@@ -13,6 +13,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
+import { SellerAccountService } from '../sellers/seller-account.service';
 import * as path from 'path';
 import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,19 +21,23 @@ import * as sharp from 'sharp';
 
 const KYC_UPLOAD_DIR = process.env.KYC_UPLOAD_DIR || './uploads/kyc-docs';
 const PRODUCT_UPLOAD_BASE = process.env.PRODUCT_UPLOAD_DIR || './uploads/products';
+const LOGO_UPLOAD_DIR = process.env.LOGO_UPLOAD_DIR || './uploads/logos';
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_KYC_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 const ALLOWED_PRODUCT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_LOGO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-// Ensure KYC directory exists
-if (!fs.existsSync(KYC_UPLOAD_DIR)) {
-  fs.mkdirSync(KYC_UPLOAD_DIR, { recursive: true });
-}
+// Ensure upload directories exist
+if (!fs.existsSync(KYC_UPLOAD_DIR))   fs.mkdirSync(KYC_UPLOAD_DIR,   { recursive: true });
+if (!fs.existsSync(LOGO_UPLOAD_DIR))  fs.mkdirSync(LOGO_UPLOAD_DIR,  { recursive: true });
 
 @ApiTags('upload')
 @Controller('upload')
 export class UploadController {
   private readonly logger = new Logger(UploadController.name);
+
+  constructor(private readonly accountService: SellerAccountService) {}
 
   // ─── KYC Document Upload ───────────────────────────────────────────────────
 
@@ -156,5 +161,58 @@ export class UploadController {
       fileName: file.originalname,
       mimeType: 'image/webp',
     });
+  }
+
+  // ─── Company Logo Upload ──────────────────────────────────────────────────
+
+  @Post('seller/logo')
+  @Roles('SELLER')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (ALLOWED_LOGO_MIME_TYPES.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Only JPG, PNG, or WebP images are allowed for logos'), false);
+        }
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Upload company logo — resized to 400×400 WebP, stored at /uploads/logos/{sellerId}.webp',
+  })
+  @ApiResponse({ status: 201, description: 'Logo uploaded and seller record updated' })
+  async uploadSellerLogo(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ApiResponseDto<any>> {
+    if (!file) throw new BadRequestException('No file provided');
+
+    if (file.size > LOGO_MAX_BYTES) {
+      throw new BadRequestException('Logo must be under 2 MB');
+    }
+
+    const sellerId = user.id; // NOTE: user.id on a SELLER token is the Seller.id (set in jwt.strategy)
+    // Actually user.id from JWT is the userId — we let the service resolve sellerId
+    const logoPath = path.join(LOGO_UPLOAD_DIR, `${user.id}.webp`);
+
+    try {
+      await (sharp as any)(file.buffer)
+        .resize(400, 400, { fit: 'cover', position: 'centre' })
+        .webp({ quality: 90 })
+        .toFile(logoPath);
+    } catch (err: any) {
+      this.logger.error(`Logo processing failed: ${err.message}`);
+      throw new BadRequestException('Image processing failed. Please try a different file.');
+    }
+
+    const logoUrl = `/logos/${user.id}.webp`;
+    await this.accountService.updateLogo(user.id, logoUrl);
+
+    this.logger.log(`Seller logo uploaded: userId=${user.id}`);
+    return ApiResponseDto.success('Logo uploaded successfully', { logoUrl });
   }
 }

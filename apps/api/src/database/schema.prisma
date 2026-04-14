@@ -178,6 +178,7 @@ model Seller {
   directorPan             String?
   directorPhoto           String?
   aadhaarLastFour         String?   // UIDAI: only last 4 digits stored
+  logoUrl                 String?   // WebP logo stored at /uploads/logos/{id}.webp (Module 14)
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -493,6 +494,8 @@ model NotificationPreferences {
   smsNotifications       Boolean  @default(false)
   whatsappNotifications  Boolean  @default(false)
   pushNotifications      Boolean  @default(false)
+  /// Per-event-type overrides: { NEW_LEAD: { email: true, sms: false, whatsapp: true }, ... }
+  eventPreferences       Json?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }

@@ -1,13 +1,20 @@
 /**
  * Custom webpack configuration for the NestJS API.
  *
- * Problem: Native Node.js modules (bcrypt, sharp, etc.) use node-pre-gyp for
- * binary bindings. Webpack cannot bundle these correctly and produces errors
- * about HTML files and missing aws-sdk/mock-aws-s3/nock modules.
+ * Two problems solved here:
  *
- * Solution: Mark native modules as externals so webpack leaves them as
- * `require('module-name')` calls that Node resolves at runtime from
- * node_modules — exactly how they're meant to be used.
+ * 1. Native Node.js modules (bcrypt, sharp, etc.) use node-pre-gyp for binary
+ *    bindings. Webpack cannot bundle these correctly, so they are marked as
+ *    externals and left as plain `require()` calls resolved at runtime.
+ *
+ * 2. Prisma Client uses a native query engine (.dll.node on Windows, .so.node
+ *    on Linux). When webpack bundles @prisma/client the engine binary path
+ *    resolution breaks because the engine is looked up relative to the source
+ *    file location — which no longer exists after bundling.
+ *
+ *    Fix: externalize both @prisma/client and .prisma/client so webpack emits
+ *    `require('@prisma/client')` in the bundle. Node then resolves the package
+ *    from node_modules at runtime where the engine binary already lives.
  */
 
 const nativeModules = [
@@ -24,6 +31,12 @@ module.exports = function (options) {
     ...options,
     externals: [
       ...(Array.isArray(options.externals) ? options.externals : []),
+
+      // Prisma: must NOT be bundled — engine binary is resolved from node_modules at runtime
+      { '@prisma/client': 'commonjs @prisma/client' },
+      { '.prisma/client': 'commonjs .prisma/client' },
+
+      // Native addon modules
       function ({ request }, callback) {
         if (nativeModules.some((m) => request === m || request.startsWith(m + '/'))) {
           return callback(null, 'commonjs ' + request);
