@@ -505,7 +505,8 @@ export class ProductsService {
       if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
         // For JSONB filtering, we need to check all tiers 
         // This query checks if any tier's price falls within the range 
-        const priceConditions = [];
+        //const priceConditions = [];
+        const priceConditions: Prisma.ProductWhereInput[] = [];
 
         if (filters.priceMin !== undefined) {
           priceConditions.push({
