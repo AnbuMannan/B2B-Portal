@@ -51,7 +51,8 @@ export default function Step1BusinessProfile({ onNext }: Props) {
   const selectedIndustries = watch('industryType') ?? [];
 
   const onSubmit = (data: Step1Form) => {
-    saveKycDraft({ step1: data, currentStep: 2 });
+    // Assert the type to bypass the Zod inference mismatch
+    saveKycDraft({ step1: data as Required<Step1Form>, currentStep: 2 });
     onNext(data);
   };
 
