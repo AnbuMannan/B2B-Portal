@@ -79,7 +79,7 @@ export default function KpiCards({ kpis, lowBalance }: KpiCardsProps) {
         label="Lead Credits"
         value={kpis.leadCreditBalance}
         sub={lowBalance ? '⚠ Low balance' : undefined}
-        linkHref="/seller/wallet/recharge"
+        linkHref="/seller/wallet"
         linkLabel="Recharge"
         highlight={lowBalance ? 'warning' : undefined}
         icon={

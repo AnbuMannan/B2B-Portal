@@ -49,6 +49,7 @@ interface SellerProfile {
     hasIEC: boolean;
     directorName: string | null;
     directorDesignation: string | null;
+    aadhaarLastFour: string | null;
   };
   documents: KycDocument[];
   memberSince: string;
@@ -160,6 +161,7 @@ export default function SellerProfilePage() {
   const [logoUploading, setLogoUploading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [resubmitting, setResubmitting] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const authHeader = useCallback(() => {
@@ -262,10 +264,24 @@ export default function SellerProfilePage() {
     }
   };
 
-  // ─── Re-verification request ────────────────────────────────────────────
+  // ─── Re-KYC submission ────────────────────────────────────────────────────
 
-  const handleReVerify = () => {
-    toast('Please contact support@b2bportal.in to request re-verification.', { icon: 'ℹ️' });
+  const handleReVerify = async () => {
+    if (!window.confirm('Re-submit your KYC for review? Our team will review it within 2–3 business days.')) return;
+    setResubmitting(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE}/api/seller/kyc/re-submit`,
+        {},
+        { headers: authHeader() },
+      );
+      toast.success(res.data.data?.message ?? 'KYC re-submitted successfully');
+      await fetchProfile();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? 'Re-submission failed. Please try again.');
+    } finally {
+      setResubmitting(false);
+    }
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────
@@ -358,9 +374,10 @@ export default function SellerProfilePage() {
           {profile.kycStatus === 'REJECTED' && (
             <button
               onClick={handleReVerify}
-              className="text-xs text-blue-600 hover:underline font-medium"
+              disabled={resubmitting}
+              className="text-xs text-blue-600 hover:underline font-medium disabled:opacity-50"
             >
-              Request Re-verification →
+              {resubmitting ? 'Submitting…' : 'Re-submit KYC →'}
             </button>
           )}
           {!editMode ? (
@@ -480,6 +497,12 @@ export default function SellerProfilePage() {
             { label: 'Udyam Number',   value: profile.kyc.udyamNumber },
             { label: 'Business Model', value: profile.kyc.businessModel?.replace(/_/g, ' ') },
             { label: 'Director Name',  value: profile.kyc.directorName },
+            {
+              label: 'Aadhaar (last 4)',
+              value: profile.kyc.aadhaarLastFour
+                ? `XXXX-XXXX-${profile.kyc.aadhaarLastFour}`
+                : null,
+            },
           ].map(({ label, value }) => (
             <div key={label}>
               <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
@@ -516,9 +539,10 @@ export default function SellerProfilePage() {
           {profile.kycStatus === 'REJECTED' && (
             <button
               onClick={handleReVerify}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+              disabled={resubmitting}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
             >
-              Request Re-verification
+              {resubmitting ? 'Submitting…' : 'Re-submit KYC'}
             </button>
           )}
         </div>
@@ -575,9 +599,10 @@ export default function SellerProfilePage() {
               <p className="text-sm text-red-700 mt-1">{profile.rejectionReason}</p>
               <button
                 onClick={handleReVerify}
-                className="mt-3 text-sm font-medium text-red-600 hover:underline"
+                disabled={resubmitting}
+                className="mt-3 text-sm font-medium text-red-600 hover:underline disabled:opacity-50"
               >
-                Contact support to re-apply →
+                {resubmitting ? 'Submitting…' : 'Re-submit KYC for review →'}
               </button>
             </div>
           </div>

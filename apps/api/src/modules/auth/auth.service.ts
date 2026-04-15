@@ -7,6 +7,10 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const otplib = require('otplib') as any;
+const totp: any = new otplib.TOTP();
+import * as QRCode from 'qrcode';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -277,5 +281,77 @@ export class AuthService {
 
   private maskPhone(phone: string): string {
     return phone.replace(/(\d{2})\d{6}(\d{2})/, '$1XXXXXX$2');
+  }
+
+  // ─── 2FA / TOTP ────────────────────────────────────────────────────────────
+
+  /** Generate a new TOTP secret + QR code data URL. Does NOT enable 2FA yet. */
+  async setup2fa(userId: string): Promise<{ secret: string; qrDataUrl: string; otpauthUrl: string }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } }) as any;
+    if (!user) throw new NotFoundException('User not found');
+    if (user.twoFaEnabled) throw new BadRequestException('2FA is already enabled');
+
+    const secret = totp.generateSecret();
+    const otpauthUrl = totp.toURI(user.email, secret, { issuer: 'B2B Portal' });
+    const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    // Store secret temporarily (unverified) — overwrite any prior pending secret
+    await (this.prisma.user as any).update({
+      where: { id: userId },
+      data: { twoFaSecret: secret, twoFaEnabled: false },
+    });
+
+    return { secret, qrDataUrl, otpauthUrl };
+  }
+
+  /** Verify the TOTP token and activate 2FA for the user. */
+  async verify2fa(userId: string, token: string): Promise<{ enabled: boolean }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } }) as any;
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.twoFaSecret) throw new BadRequestException('Run 2FA setup first');
+    if (user.twoFaEnabled) throw new BadRequestException('2FA is already enabled');
+
+    const isValid = totp.verify({ token, secret: user.twoFaSecret });
+    if (!isValid) throw new BadRequestException('Invalid TOTP token — check your authenticator app');
+
+    await (this.prisma.user as any).update({
+      where: { id: userId },
+      data: { twoFaEnabled: true },
+    });
+
+    this.logger.log(`2FA enabled for user: ${userId}`);
+    return { enabled: true };
+  }
+
+  /** Disable 2FA after verifying a live TOTP token. */
+  async disable2fa(userId: string, token: string): Promise<{ disabled: boolean }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } }) as any;
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.twoFaEnabled) throw new BadRequestException('2FA is not currently enabled');
+
+    const isValid = totp.verify({ token, secret: user.twoFaSecret });
+    if (!isValid) throw new UnauthorizedException('Invalid TOTP token');
+
+    await (this.prisma.user as any).update({
+      where: { id: userId },
+      data: { twoFaEnabled: false, twoFaSecret: null },
+    });
+
+    this.logger.log(`2FA disabled for user: ${userId}`);
+    return { disabled: true };
+  }
+
+  /** Get 2FA status for the current user. */
+  async get2faStatus(userId: string): Promise<{ enabled: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }, // twoFaEnabled not yet in generated client — fetched via raw
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const raw = await (this.prisma.user as any).findUnique({
+      where: { id: userId },
+      select: { twoFaEnabled: true },
+    });
+    return { enabled: raw?.twoFaEnabled ?? false };
   }
 }

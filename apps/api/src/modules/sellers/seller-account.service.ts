@@ -56,6 +56,7 @@ export class SellerAccountService {
         hasIEC: true,
         directorName: true,
         directorDesignation: true,
+        aadhaarLastFour: true,
         createdAt: true,
         user: {
           select: {
@@ -121,6 +122,7 @@ export class SellerAccountService {
         hasIEC: seller.hasIEC,
         directorName: seller.directorName ?? null,
         directorDesignation: seller.directorDesignation ?? null,
+        aadhaarLastFour: (seller as any).aadhaarLastFour ?? null,
       },
       documents: seller.kycDocuments,
       memberSince: seller.createdAt,

@@ -369,9 +369,10 @@ function RegisterContent() {
 }
 
 export default function RegisterPage() {
+  const S = Suspense as any; // @types/react version compat shim
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
+    <S fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
       <RegisterContent />
-    </Suspense>
+    </S>
   );
 }

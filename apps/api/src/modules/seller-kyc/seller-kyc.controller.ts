@@ -80,6 +80,17 @@ export class SellerKycController {
     return ApiResponseDto.success(result.message, result);
   }
 
+  @Post('re-submit')
+  @HttpCode(HttpStatus.OK)
+  @Roles('SELLER')
+  @ApiOperation({ summary: 'Re-submit KYC after rejection' })
+  async reSubmit(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiResponseDto<any>> {
+    const result = await this.sellerKycService.resubmitKyc(user.id);
+    return ApiResponseDto.success(result.message, result);
+  }
+
   @Get('status')
   @Roles('SELLER')
   @ApiOperation({ summary: 'Get current KYC status' })

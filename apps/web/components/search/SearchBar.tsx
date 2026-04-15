@@ -58,7 +58,7 @@ export function SearchBar({ defaultValue = '', placeholder = 'Search products, s
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout>>();
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Flatten all suggestion items for keyboard navigation
   const allItems: Array<{ text: string; label?: string }> = [

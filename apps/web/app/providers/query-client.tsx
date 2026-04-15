@@ -2,13 +2,10 @@
 
 import { QueryClient, QueryClientProvider as ReactQueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import React, { useState, ReactNode } from 'react'
+import React, { useState } from 'react'
 
-interface QueryClientProviderProps {
-  children: ReactNode
-}
-
-export function QueryClientProvider({ children }: QueryClientProviderProps) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function QueryClientProvider({ children }: any) {
   const [queryClient] = useState(
     () =>
       new QueryClient({

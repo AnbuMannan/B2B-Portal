@@ -20,10 +20,20 @@
 const nativeModules = [
   'bcrypt',
   'sharp',
+  'pdfkit',
   '@mapbox/node-pre-gyp',
   'mock-aws-s3',
   'aws-sdk',
   'nock',
+];
+
+// Runtime modules that webpack must not bundle — resolved by Node at runtime
+const runtimeModules = [
+  'express',
+  'reflect-metadata',
+  'rxjs',
+  'class-transformer',
+  'class-validator',
 ];
 
 module.exports = function (options) {
@@ -36,9 +46,12 @@ module.exports = function (options) {
       { '@prisma/client': 'commonjs @prisma/client' },
       { '.prisma/client': 'commonjs .prisma/client' },
 
-      // Native addon modules
+      // Native addon modules + runtime modules (must not be bundled)
       function ({ request }, callback) {
-        if (nativeModules.some((m) => request === m || request.startsWith(m + '/'))) {
+        if (
+          nativeModules.some((m) => request === m || request.startsWith(m + '/')) ||
+          runtimeModules.some((m) => request === m || request.startsWith(m + '/'))
+        ) {
           return callback(null, 'commonjs ' + request);
         }
         callback();

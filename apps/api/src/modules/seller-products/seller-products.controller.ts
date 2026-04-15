@@ -11,7 +11,13 @@ import {
   HttpStatus,
   ParseIntPipe,
   DefaultValuePipe,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiConsumes } from '@nestjs/swagger';
 import {
   ApiOperation,
   ApiQuery,
@@ -126,5 +132,24 @@ export class SellerProductsController {
   ): Promise<ApiResponseDto<any>> {
     const data = await this.sellerProductsService.reactivate(user.id, id);
     return ApiResponseDto.success('Product reactivated', data);
+  }
+
+  @Post('import-csv')
+  @Roles('SELLER')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Bulk import products from CSV (max 2 MB, 500 rows)' })
+  @ApiResponse({ status: 200, description: 'Import summary with counts and any row errors' })
+  async importCsv(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ApiResponseDto<any>> {
+    if (!file) throw new BadRequestException('CSV file is required (field name: file)');
+    if (!file.originalname.endsWith('.csv') && file.mimetype !== 'text/csv') {
+      throw new BadRequestException('File must be a CSV (.csv)');
+    }
+    const data = await this.sellerProductsService.importCsv(user.id, file.buffer);
+    return ApiResponseDto.success(`Imported ${data.imported} product(s)`, data);
   }
 }

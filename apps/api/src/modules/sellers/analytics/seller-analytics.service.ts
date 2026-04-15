@@ -183,6 +183,11 @@ export class SellerAnalyticsService {
         total: productViewAgg._sum.viewCount ?? 0,
       },
 
+      // ── Seller profile unique views (Redis HLL, deduped by IP per day) ───
+      profileViews: {
+        total: await this._getProfileViewCount(seller.id, days),
+      },
+
       // ── Lead stats ────────────────────────────────────────────────────────
       leadsViewed: {
         total:          leadsRevealedCount,
@@ -237,6 +242,18 @@ export class SellerAnalyticsService {
     await this.redis.set(cacheKey, result, 3600); // 1-hour cache
     this.logger.log(`Analytics computed for seller ${seller.id} (period: ${period})`);
     return result;
+  }
+
+  // ─── Profile view helper ─────────────────────────────────────────────────────
+
+  private async _getProfileViewCount(sellerId: string, days: number): Promise<number> {
+    let total = 0;
+    const now = new Date();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(now.getTime() - i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      total += await this.redis.pfCount(`seller:views:hll:${sellerId}:${d}`);
+    }
+    return total;
   }
 
   // ─── CSV export ─────────────────────────────────────────────────────────────

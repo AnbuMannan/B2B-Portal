@@ -130,6 +130,29 @@ export class RedisService {
     return current <= limit;
   }
 
+  /** HyperLogLog: add one or more elements to a set */
+  async pfAdd(key: string, ...elements: string[]): Promise<void> {
+    if (!this.client) return;
+    try {
+      if (!this.client.isOpen) await this.connect();
+      await this.client.pfAdd(key, elements);
+    } catch (error) {
+      this.logger.error(`pfAdd failed: ${key}`, error);
+    }
+  }
+
+  /** HyperLogLog: return approximate unique count */
+  async pfCount(key: string): Promise<number> {
+    if (!this.client) return 0;
+    try {
+      if (!this.client.isOpen) await this.connect();
+      return await this.client.pfCount(key);
+    } catch (error) {
+      this.logger.error(`pfCount failed: ${key}`, error);
+      return 0;
+    }
+  }
+
   async getKeys(pattern: string): Promise<string[]> {
     if (!this.client) return [];
     try {

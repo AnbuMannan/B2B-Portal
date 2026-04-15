@@ -11,14 +11,15 @@ import ProductForm from '../components/ProductForm';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 
 export default function NewProductPage() {
+  const S = Suspense as any; // @types/react version compat shim
   return (
-    <Suspense fallback={
+    <S fallback={
       <div className="flex items-center justify-center min-h-64">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
       </div>
     }>
       <NewProductPageInner />
-    </Suspense>
+    </S>
   );
 }
 

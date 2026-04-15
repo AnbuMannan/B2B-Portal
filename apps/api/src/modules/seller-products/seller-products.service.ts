@@ -272,4 +272,85 @@ export class SellerProductsService {
       viewCount: product.viewTracking?.viewCount ?? 0,
     };
   }
+
+  // ─── G19: Bulk CSV import ────────────────────────────────────────────────
+
+  /**
+   * Parse a CSV buffer and bulk-insert products for the seller.
+   * Expected CSV columns (header row required):
+   *   name, description, hsnCode, unit, retailPrice, wholesaleMinQty, wholesalePrice, bulkMinQty, bulkPrice
+   * All price columns are optional — at least one pricing tier must be set.
+   * Returns a summary: { imported, failed, errors }.
+   */
+  async importCsv(userId: string, csvBuffer: Buffer) {
+    const seller = await this.getVerifiedSeller(userId);
+
+    const text = csvBuffer.toString('utf8');
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) throw new BadRequestException('CSV must have a header row and at least one product row');
+
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    const requiredCols = ['name', 'retailprice'];
+    for (const col of requiredCols) {
+      if (!headers.includes(col)) {
+        throw new BadRequestException(`CSV missing required column: "${col}"`);
+      }
+    }
+
+    const col = (row: string[], name: string) =>
+      row[headers.indexOf(name)]?.trim() ?? '';
+
+    let imported = 0;
+    const errors: string[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].split(',');
+      const name = col(row, 'name');
+      if (!name) { errors.push(`Row ${i + 1}: missing name`); continue; }
+
+      const retailPrice  = parseFloat(col(row, 'retailprice') || '0');
+      const wholesalePrice = parseFloat(col(row, 'wholesaleprice') || '0');
+      const bulkPrice    = parseFloat(col(row, 'bulkprice') || '0');
+
+      const pricing: any = {};
+      if (retailPrice > 0) {
+        pricing.retail = { enabled: true, pricePerUnit: retailPrice, moq: 1 };
+      }
+      if (wholesalePrice > 0) {
+        const minQty = parseInt(col(row, 'wholesaleminqty') || '10', 10);
+        pricing.wholesale = { enabled: true, pricePerUnit: wholesalePrice, moq: minQty };
+      }
+      if (bulkPrice > 0) {
+        const minQty = parseInt(col(row, 'bulkminqty') || '100', 10);
+        pricing.bulk = { enabled: true, pricePerUnit: bulkPrice, moq: minQty };
+      }
+
+      if (!pricing.retail && !pricing.wholesale && !pricing.bulk) {
+        errors.push(`Row ${i + 1}: at least one price (retailPrice / wholesalePrice / bulkPrice) required`);
+        continue;
+      }
+
+      try {
+        await this.prisma.product.create({
+          data: {
+            sellerId:         seller.id,
+            name,
+            description:      col(row, 'description') || null,
+            hsnCode:          col(row, 'hsncode') || null,
+            unit:             col(row, 'unit') || 'piece',
+            multiTierPricing: pricing,
+            images:           [],
+            isActive:         true,
+            adminApprovalStatus: 'PENDING',
+          },
+        });
+        imported++;
+      } catch (err: any) {
+        errors.push(`Row ${i + 1} ("${name}"): ${err.message}`);
+      }
+    }
+
+    this.logger.log(`CSV import for seller ${seller.id}: ${imported} imported, ${errors.length} failed`);
+    return { imported, failed: errors.length, errors: errors.slice(0, 20) };
+  }
 }

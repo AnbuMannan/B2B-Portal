@@ -7,8 +7,17 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import dynamic from 'next/dynamic';
 import PricingTable from './PricingTable';
 import ImageUploader from './ImageUploader';
+
+// Dynamically import to avoid SSR issues with Tiptap (uses browser APIs)
+const RichTextEditor = dynamic(() => import('../../../../components/editor/RichTextEditor'), {
+  ssr: false,
+  loading: () => (
+    <div className="border border-gray-300 rounded-lg h-40 animate-pulse bg-gray-50" />
+  ),
+});
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 
@@ -280,15 +289,22 @@ export default function ProductForm({
               )}
             </div>
 
-            {/* Description */}
+            {/* Description — Tiptap rich text editor */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea
-                {...register('description')}
-                rows={5}
-                placeholder="Describe your product — specifications, use cases, features, packaging…"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              <Controller
+                name="description"
+                control={methods.control}
+                render={({ field }) => (
+                  <RichTextEditor
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    placeholder="Describe your product — specifications, use cases, features, packaging…"
+                    minHeight="160px"
+                  />
+                )}
               />
+              <p className="text-xs text-gray-400 mt-1">Supports bold, italic, lists and headings.</p>
             </div>
 
             {/* Country of Origin + Availability */}

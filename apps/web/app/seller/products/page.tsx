@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
@@ -63,6 +63,8 @@ export default function SellerProductsPage() {
   const [loading, setLoading] = useState(true);
   const [deactivating, setDeactivating] = useState<string | null>(null);
   const [reactivating, setReactivating] = useState<string | null>(null);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement | undefined>(undefined);
 
   const authHeaders = () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
@@ -130,6 +132,32 @@ export default function SellerProductsPage() {
     router.push('/seller/products/new?from=duplicate');
   };
 
+  const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.csv')) { toast.error('Please select a .csv file'); return; }
+
+    setCsvImporting(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await axios.post(`${API_URL}/api/seller/products/import-csv`, formData, {
+        headers: { ...authHeaders(), 'Content-Type': 'multipart/form-data' },
+      });
+      const { imported, failed, errors } = res.data.data;
+      if (imported > 0) toast.success(`${imported} product(s) imported successfully`);
+      if (failed > 0) toast.error(`${failed} row(s) failed. Check console for details.`);
+      if (errors?.length) console.warn('CSV import errors:', errors);
+      await loadProducts();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? 'CSV import failed');
+    } finally {
+      setCsvImporting(false);
+      // Reset file input
+      if (csvInputRef.current) csvInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <Toaster position="top-right" />
@@ -142,15 +170,57 @@ export default function SellerProductsPage() {
             {pagination ? `${pagination.total} total products` : 'Manage your product listings'}
           </p>
         </div>
-        <Link
-          href="/seller/products/new"
-          className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add New Product
-        </Link>
+        <div className="flex items-center gap-3">
+          {/* Hidden CSV file input */}
+          <input
+            ref={(el) => { if (el) csvInputRef.current = el; }}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleCsvImport}
+          />
+          {/* CSV template download */}
+          <button
+            type="button"
+            onClick={() => {
+              const headers = 'name,retailPrice,wholesalePrice,bulkPrice,wholesaleMinQty,bulkMinQty,description,hsnCode,unit';
+              const example = 'Steel Bearings SKF 6206,850,750,650,10,100,High-quality steel bearings for industrial use,84821010,piece';
+              const csv = `${headers}\n${example}\n`;
+              const blob = new Blob([csv], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'product-import-template.csv';
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="inline-flex items-center gap-2 border border-gray-300 text-gray-600 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Template
+          </button>
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            disabled={csvImporting}
+            className="inline-flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            {csvImporting ? 'Importing…' : 'Import CSV'}
+          </button>
+          <Link
+            href="/seller/products/new"
+            className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add New Product
+          </Link>
+        </div>
       </div>
 
       {/* Filter tabs */}

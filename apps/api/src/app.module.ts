@@ -35,6 +35,7 @@ import { SellerProductsModule } from './modules/seller-products/seller-products.
 import { WalletModule } from './modules/wallet/wallet.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.interceptor';
+import { SeoModule } from './modules/seo/seo.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.inter
     LeadContactModule,
     AuditModule,
     FeatureFlagsModule,
+    SeoModule,
   ],
   controllers: [],
   providers: [

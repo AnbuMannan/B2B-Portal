@@ -1,4 +1,6 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthenticatedUser } from './strategies/jwt.strategy';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -70,5 +72,44 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<ApiResponseDto<any>> {
     const result = await this.authService.resetPassword(dto);
     return ApiResponseDto.success(result.message);
+  }
+
+  // ─── 2FA / TOTP endpoints ────────────────────────────────────────────────
+
+  @Get('2fa/status')
+  @ApiOperation({ summary: 'Get 2FA enabled status for current user' })
+  async get2faStatus(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponseDto<any>> {
+    const result = await this.authService.get2faStatus(user.id);
+    return ApiResponseDto.success('2FA status retrieved', result);
+  }
+
+  @Post('2fa/setup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate TOTP secret and QR code — call before verify' })
+  async setup2fa(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponseDto<any>> {
+    const result = await this.authService.setup2fa(user.id);
+    return ApiResponseDto.success('2FA setup initiated', result);
+  }
+
+  @Post('2fa/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify TOTP token and enable 2FA' })
+  async verify2fa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { token: string },
+  ): Promise<ApiResponseDto<any>> {
+    const result = await this.authService.verify2fa(user.id, body.token);
+    return ApiResponseDto.success('2FA enabled successfully', result);
+  }
+
+  @Post('2fa/disable')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Disable 2FA after verifying a live TOTP token' })
+  async disable2fa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { token: string },
+  ): Promise<ApiResponseDto<any>> {
+    const result = await this.authService.disable2fa(user.id, body.token);
+    return ApiResponseDto.success('2FA disabled successfully', result);
   }
 }

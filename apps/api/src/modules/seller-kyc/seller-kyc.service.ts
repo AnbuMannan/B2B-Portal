@@ -253,6 +253,53 @@ export class SellerKycService {
     };
   }
 
+  async resubmitKyc(userId: string) {
+    const seller = await this.prisma.seller.findUnique({
+      where: { userId },
+      include: { kycDocuments: true },
+    });
+
+    if (!seller) {
+      throw new NotFoundException('Seller profile not found');
+    }
+    if (seller.kycStatus !== 'REJECTED') {
+      throw new BadRequestException(
+        `Re-submission is only allowed when KYC is rejected. Current status: ${seller.kycStatus}`,
+      );
+    }
+
+    // Verify mandatory documents still exist
+    const docTypes = seller.kycDocuments.map((d) => d.documentType);
+    if (!docTypes.includes('GST_CERTIFICATE') || !docTypes.includes('PAN_CARD')) {
+      throw new BadRequestException(
+        'GST Certificate and PAN Card are mandatory before re-submitting KYC',
+      );
+    }
+
+    await this.prisma.seller.update({
+      where: { id: seller.id },
+      data: { kycStatus: 'PENDING', rejectionReason: null },
+    });
+
+    // Notify admin
+    this.notificationsQueue.add('kyc-resubmitted', {
+      userId,
+      sellerId: seller.id,
+      companyName: seller.companyName,
+      type: 'EMAIL',
+      templateId: 'admin-kyc-resubmit',
+      data: { sellerId: seller.id, companyName: seller.companyName },
+      requestId: uuidv4(),
+    }).catch((err) => this.logger.warn(`KYC re-submit notification failed: ${err.message}`));
+
+    this.logger.log(`KYC re-submitted for seller: ${seller.id}`);
+    return {
+      sellerId: seller.id,
+      kycStatus: 'PENDING',
+      message: 'KYC re-submitted successfully. Our team will review it within 2-3 business days.',
+    };
+  }
+
   async getKycStatus(userId: string) {
     const seller = await this.prisma.seller.findUnique({
       where: { userId },

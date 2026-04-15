@@ -130,7 +130,7 @@ function ProductCard({ product, onProductClick }: { product: Product; onProductC
 
 const ProductGrid = ({ products, isLoading = false, onProductClick }: ProductGridProps) => {
   const [visibleProducts, setVisibleProducts] = useState<number>(8);
-  const observerRef = useRef<IntersectionObserver>();
+  const observerRef = useRef<IntersectionObserver | undefined>(undefined);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

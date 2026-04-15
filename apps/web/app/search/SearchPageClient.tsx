@@ -84,7 +84,7 @@ export function SearchPageClient() {
   const [isLoading, setIsLoading] = useState(!!currentQuery);
 
   // Abort controller ref to cancel in-flight requests
-  const abortRef = useRef<AbortController>();
+  const abortRef = useRef<AbortController | undefined>(undefined);
 
   const runSearch = useCallback(
     async (q: string, f: FilterState, p: number, sort: string) => {

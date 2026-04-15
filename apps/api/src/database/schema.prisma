@@ -125,6 +125,8 @@ model User {
   phoneVerified   Boolean   @default(false)
   passwordResetToken  String?
   passwordResetExpiry DateTime?
+  twoFaSecret     String?
+  twoFaEnabled    Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
@@ -541,14 +543,17 @@ model FeatureFlag {
 
 /// Search query analytics log (Module 5)
 model SearchLog {
-  id           String   @id @default(cuid())
-  query        String
-  resultsCount Int      @default(0)
-  filters      Json?
-  userId       String?
-  ipAddress    String?
-  timestamp    DateTime @default(now())
-  createdAt    DateTime @default(now())
+  id               String   @id @default(cuid())
+  query            String
+  resultsCount     Int      @default(0)
+  filters          Json?
+  userId           String?
+  ipAddress        String?
+  /// CTR tracking: set when a result is clicked via POST /api/search/track-click
+  clickedProductId String?
+  resultPosition   Int?
+  timestamp        DateTime @default(now())
+  createdAt        DateTime @default(now())
 
   @@index([query])
   @@index([createdAt(sort: Desc)])

@@ -92,7 +92,7 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
   const handleMarkConverted = async (reveal: RevealedContact) => {
     if (!accessToken || convertingIds.has(reveal.id)) return;
 
-    setConvertingIds((prev) => new Set([...prev, reveal.id]));
+    setConvertingIds((prev) => new Set([...Array.from(prev), reveal.id]));
 
     try {
       const res = await fetch(`${API_BASE}/api/seller/leads/${reveal.buyLeadId}/convert`, {

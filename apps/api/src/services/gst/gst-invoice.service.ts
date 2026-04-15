@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import PDFDocument from 'pdfkit';
 import { PrismaService } from '../../database/database.service';
 
 export interface InvoiceData {
@@ -127,6 +128,154 @@ export class GstInvoiceService {
 
   readInvoice(relativePath: string): Buffer {
     return fs.readFileSync(this.getInvoicePath(relativePath));
+  }
+
+  // ── PDF generation ────────────────────────────────────────────────────────
+
+  /**
+   * Generates a GST-compliant PDF invoice using PDFKit.
+   * Returns the file path relative to invoiceBaseDir.
+   */
+  async generatePdf(data: InvoiceData): Promise<string> {
+    const year  = data.date.getFullYear();
+    const month = String(data.date.getMonth() + 1).padStart(2, '0');
+    const dir   = path.join(this.invoiceBaseDir, String(year), month);
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const fileName     = `${data.invoiceNumber}.pdf`;
+    const relativePath = path.join(String(year), month, fileName);
+    const fullPath     = path.join(dir, fileName);
+
+    await this._writePdf(data, fullPath);
+    this.logger.log(`PDF invoice generated: ${relativePath}`);
+    return relativePath;
+  }
+
+  private _writePdf(data: InvoiceData, filePath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      const fmt = (n: number) =>
+        `Rs. ${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+      const dateStr = data.date.toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'long', year: 'numeric',
+      });
+
+      // ── Header ──────────────────────────────────────────────────────────────
+      doc.fontSize(20).font('Helvetica-Bold').text('TAX INVOICE', { align: 'center' });
+      doc.fontSize(10).font('Helvetica').fillColor('#555')
+        .text('Original for Recipient | PAID', { align: 'center' });
+      doc.moveDown(0.5);
+
+      // ── Blue rule ───────────────────────────────────────────────────────────
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#1e40af').lineWidth(2).stroke();
+      doc.moveDown(0.5);
+
+      // ── Supplier / Recipient ────────────────────────────────────────────────
+      const boxY = doc.y;
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#1e40af').text('Billed By (Supplier)', 50, boxY);
+      doc.font('Helvetica').fontSize(9).fillColor('#222')
+        .text(data.platformName, 50)
+        .text(`GSTIN: ${data.platformGstin}`)
+        .text(data.platformAddress);
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#1e40af').text('Billed To (Recipient)', 300, boxY);
+      doc.font('Helvetica').fontSize(9).fillColor('#222')
+        .text(data.buyerName, 300)
+        .text(data.buyerGstin ? `GSTIN: ${data.buyerGstin}` : '')
+        .text(data.buyerAddress ?? '');
+
+      doc.moveDown(1);
+
+      // ── Invoice meta table ─────────────────────────────────────────────────
+      const headers = ['Invoice No.', 'Invoice Date', 'Payment ID', 'SAC Code'];
+      const values  = [data.invoiceNumber, dateStr, data.razorpayPaymentId ?? '—', '998313'];
+      const colW = 123;
+      const tableX = 50;
+      let colX = tableX;
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#fff');
+      headers.forEach((h, i) => {
+        doc.rect(colX, doc.y, colW, 18).fillAndStroke('#1e40af', '#1e40af');
+        doc.fillColor('#fff').text(h, colX + 4, doc.y - 14, { width: colW - 8 });
+        colX += colW;
+      });
+      doc.moveDown(0.15);
+      colX = tableX;
+      doc.font('Helvetica').fontSize(9).fillColor('#222');
+      values.forEach((v, i) => {
+        doc.text(v, colX + 4, doc.y, { width: colW - 8 });
+        colX += colW;
+      });
+      doc.moveDown(1);
+
+      // ── Line item ─────────────────────────────────────────────────────────
+      const lineHeaders = ['Description', 'Credits', 'Rate', 'Base Amount'];
+      const lineWidths  = [240, 60, 100, 100];
+      colX = tableX;
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#fff');
+      lineHeaders.forEach((h, i) => {
+        doc.rect(colX, doc.y, lineWidths[i], 18).fillAndStroke('#1e40af', '#1e40af');
+        doc.fillColor('#fff').text(h, colX + 4, doc.y - 14, { width: lineWidths[i] - 8 });
+        colX += lineWidths[i];
+      });
+      doc.moveDown(0.15);
+      colX = tableX;
+      doc.font('Helvetica').fontSize(9).fillColor('#222');
+      const lineValues = [
+        `Lead Credit Pack — ${data.packName}`,
+        String(data.credits),
+        fmt(data.baseAmount / data.credits) + '/cr',
+        fmt(data.baseAmount),
+      ];
+      lineValues.forEach((v, i) => {
+        doc.text(v, colX + 4, doc.y, { width: lineWidths[i] - 8 });
+        colX += lineWidths[i];
+      });
+      doc.moveDown(1);
+
+      // ── Tax summary ────────────────────────────────────────────────────────
+      const taxRows: Array<[string, string]> = [];
+      if (data.cgst > 0) {
+        taxRows.push(['CGST (9%)', fmt(data.cgst)], ['SGST (9%)', fmt(data.sgst)]);
+      } else {
+        taxRows.push(['IGST (18%)', fmt(data.igst)]);
+      }
+      taxRows.push(['Total Amount', fmt(data.totalAmount)]);
+
+      taxRows.forEach(([label, value], i) => {
+        const isTotal = i === taxRows.length - 1;
+        if (isTotal) {
+          doc.rect(50, doc.y, 495, 18).fillAndStroke('#e0f2fe', '#e0f2fe');
+          doc.font('Helvetica-Bold');
+        } else {
+          doc.font('Helvetica');
+        }
+        doc.fontSize(9).fillColor('#222')
+          .text(label, 54, doc.y - 14, { width: 380 })
+          .text(value, 450, doc.y - 9, { width: 90, align: 'right' });
+        doc.moveDown(0.15);
+      });
+
+      doc.moveDown(0.5);
+      doc.font('Helvetica').fontSize(8).fillColor('#555')
+        .text(`Amount in Words: ${this.amountToWords(data.totalAmount)}`);
+
+      // ── Footer ─────────────────────────────────────────────────────────────
+      doc.moveTo(50, doc.y + 10).lineTo(545, doc.y + 10).strokeColor('#ccc').lineWidth(1).stroke();
+      doc.moveDown(1);
+      doc.font('Helvetica').fontSize(8).fillColor('#888')
+        .text('This is a computer-generated invoice. No physical signature required.')
+        .text(`For support: support@b2bmarketplace.in | Generated: ${new Date().toISOString()}`);
+
+      doc.end();
+      stream.on('finish', resolve);
+      stream.on('error', reject);
+    });
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────

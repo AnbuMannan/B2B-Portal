@@ -54,7 +54,7 @@ export function CreditWidget({ accessToken, refreshKey = 0 }: CreditWidgetProps)
       )}
 
       <Link
-        href="/seller/wallet/recharge"
+        href="/seller/wallet"
         className="ml-1 text-primary hover:underline font-semibold"
       >
         Recharge →

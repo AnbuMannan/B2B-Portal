@@ -63,13 +63,30 @@ function PriceTier({
   );
 }
 
+// ─── CTR tracking (best-effort, fire-and-forget) ─────────────────────────────
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
+
+function trackClick(query: string, productId: string, position: number) {
+  if (!query.trim()) return;
+  fetch(`${API_URL}/api/search/track-click`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, productId, position }),
+  }).catch(() => undefined); // silent — never blocks navigation
+}
+
 // ─── Product Card ─────────────────────────────────────────────────────────────
 
 function SearchProductCard({
   product,
+  position,
+  query,
   isSponsored = false,
 }: {
   product: SearchProduct;
+  position: number;
+  query: string;
   isSponsored?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -89,7 +106,7 @@ function SearchProductCard({
         </span>
       )}
 
-      <Link href={`/product/${product.id}`} className="block">
+      <Link href={`/product/${product.id}`} className="block" onClick={() => trackClick(query, product.id, position)}>
         {/* Image */}
         <div className="relative h-44 overflow-hidden bg-muted">
           {!imgError && product.primaryImage ? (
@@ -319,7 +336,7 @@ function ZeroResults({
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {trendingProducts.slice(0, 6).map((product) => (
-              <SearchProductCard key={product.id} product={product} />
+              <SearchProductCard key={product.id} product={product} position={-1} query="" />
             ))}
           </div>
         </div>
@@ -380,6 +397,8 @@ export function SearchResults({
     return <ZeroResults query={searchTerm} trendingProducts={trendingProducts} />;
   }
 
+  const pageOffset = (page - 1) * 20; // global position offset for pagination
+
   return (
     <div className="space-y-4">
       <SortBar current={sortBy} onChange={onSortChange} />
@@ -389,6 +408,8 @@ export function SearchResults({
           <SearchProductCard
             key={product.id}
             product={product}
+            position={pageOffset + i}
+            query={searchTerm}
             isSponsored={i === 0} // First slot = future ad placement
           />
         ))}

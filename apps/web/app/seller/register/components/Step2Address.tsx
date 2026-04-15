@@ -101,6 +101,7 @@ export default function Step2Address({ onNext, onBack }: Props) {
       businessOfficeAddress: sameAsRegistered ? data.registeredOfficeAddress : data.businessOfficeAddress,
       sameAsRegistered,
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     saveKycDraft({ step2: finalData as any, currentStep: 3 });
     onNext(finalData);
   };

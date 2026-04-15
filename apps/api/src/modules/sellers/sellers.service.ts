@@ -228,4 +228,24 @@ export class SellersService {
     });
     return sellers.map((s) => s.id);
   }
+
+  /** Record a unique profile view using Redis HyperLogLog (deduplicates by visitor+day) */
+  async trackProfileView(sellerId: string, visitorId: string): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const hllKey = `seller:views:hll:${sellerId}:${today}`;
+    await this.redis.pfAdd(hllKey, visitorId);
+    // Expire after 35 days so old daily buckets auto-clean
+    await this.redis.expire(hllKey, 35 * 24 * 3600);
+  }
+
+  /** Approximate unique profile views for a seller over the last N days */
+  async getProfileViewCount(sellerId: string, days: number = 30): Promise<number> {
+    let total = 0;
+    const now = new Date();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(now.getTime() - i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      total += await this.redis.pfCount(`seller:views:hll:${sellerId}:${d}`);
+    }
+    return total;
+  }
 }

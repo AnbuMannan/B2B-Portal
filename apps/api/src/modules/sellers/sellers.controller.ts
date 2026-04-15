@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SellersService } from './sellers.service';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
@@ -39,8 +40,12 @@ export class SellersController {
   @ApiResponse({ status: 404, description: 'Seller not found' })
   async getSellerProfile(
     @Param('sellerId') sellerId: string,
+    @Req() req: Request,
   ): Promise<ApiResponseDto<any>> {
     const data = await this.sellersService.getSellerProfile(sellerId);
+    // Fire-and-forget view tracking via HyperLogLog (unique IPs per day)
+    const visitorId = (req.headers['x-forwarded-for'] as string ?? req.socket.remoteAddress ?? 'anon').split(',')[0].trim();
+    this.sellersService.trackProfileView(sellerId, visitorId).catch(() => undefined);
     return ApiResponseDto.success('Seller profile retrieved successfully', data);
   }
 

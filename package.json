@@ -36,6 +36,10 @@
     "prettier": "^3.1.1",
     "eslint": "^8.56.0"
   },
+  "overrides": {
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.5"
+  },
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=9.0.0"

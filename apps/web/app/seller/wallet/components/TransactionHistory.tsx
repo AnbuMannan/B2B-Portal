@@ -141,9 +141,9 @@ export default function TransactionHistory({ transactions }: TransactionHistoryP
                   </span>
                 </td>
 
-                {/* Invoice download */}
+                {/* Invoice download — show for all PURCHASE txns with an invoice number */}
                 <td className="py-3 px-4">
-                  {t.type === 'PURCHASE' && t.invoicePath && t.invoiceNumber ? (
+                  {t.type === 'PURCHASE' && t.invoiceNumber ? (
                     <button
                       type="button"
                       onClick={() => downloadInvoice(t.id, t.invoiceNumber!)}
