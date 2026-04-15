@@ -101,7 +101,7 @@ export default function Step2Address({ onNext, onBack }: Props) {
       businessOfficeAddress: sameAsRegistered ? data.registeredOfficeAddress : data.businessOfficeAddress,
       sameAsRegistered,
     };
-    saveKycDraft({ step2: finalData, currentStep: 3 });
+    saveKycDraft({ step2: finalData as any, currentStep: 3 });
     onNext(finalData);
   };
 
