@@ -124,7 +124,8 @@ export class SellerKycService {
     }
 
     // Save documents
-    const docUpserts = [];
+    //const docUpserts = [];
+    const docUpserts: Promise<any>[] = [];
 
     const docsToSave = [
       { documentType: 'GST_CERTIFICATE', fileUrl: dto.gstCertificateUrl },
