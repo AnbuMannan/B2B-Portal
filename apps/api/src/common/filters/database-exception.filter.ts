@@ -63,7 +63,7 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
         timestamp: new Date().toISOString(),
       });
 
-      const errorResponse = ApiResponseDto.error(code, message);
+      const errorResponse = ApiResponseDto.error(message, { code });
       response.status(statusCode).json(errorResponse);
     } else {
       // Generic database error (non-Prisma)
@@ -75,8 +75,8 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
       });
 
       const errorResponse = ApiResponseDto.error(
-        'DATABASE_ERROR',
-        'A database error occurred. Please try again later.'
+        'A database error occurred. Please try again later.',
+        { code: 'DATABASE_ERROR' },
       );
       response.status(500).json(errorResponse);
     }

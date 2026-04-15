@@ -51,7 +51,7 @@ export class BaseExceptionFilter implements ExceptionFilter {
       this.logger.error('Unknown Exception:', exception);
     }
 
-    const errorResponse = ApiResponseDto.error(code, message, details);
+    const errorResponse = ApiResponseDto.error(message, { code, details });
 
     this.logger.error('Exception Caught:', {
       status,

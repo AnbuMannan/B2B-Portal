@@ -19,7 +19,6 @@ const EVENT_TYPES = [
   { key: 'PAYMENT',          label: 'Payment Confirmation',    desc: 'Receipts for wallet recharges' },
 ] as const;
 
-type EventKey = (typeof EVENT_TYPES)[number]['key'];
 type ChannelPrefs = { email?: boolean; sms?: boolean; whatsapp?: boolean };
 
 interface Settings {
@@ -182,6 +181,14 @@ export default function SellerSettingsPage() {
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
   const [pwSaving, setPwSaving] = useState(false);
 
+  // 2FA state
+  const [twoFaEnabled, setTwoFaEnabled] = useState(false);
+  const [twoFaStep, setTwoFaStep] = useState<'idle' | 'setup' | 'disable'>('idle');
+  const [twoFaQr, setTwoFaQr] = useState('');
+  const [twoFaSecret, setTwoFaSecret] = useState('');
+  const [twoFaToken, setTwoFaToken] = useState('');
+  const [twoFaLoading, setTwoFaLoading] = useState(false);
+
   const authHeader = useCallback(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '';
     return { Authorization: `Bearer ${token}` };
@@ -190,12 +197,65 @@ export default function SellerSettingsPage() {
   // ─── Load Settings ──────────────────────────────────────────────────────
 
   useEffect(() => {
-    axios
-      .get(`${API_BASE}/api/seller/settings`, { headers: authHeader() })
-      .then((res) => setSettings(res.data.data))
-      .catch(() => toast.error('Could not load settings'))
-      .finally(() => setLoading(false));
+    const h = authHeader();
+    Promise.all([
+      axios.get(`${API_BASE}/api/seller/settings`, { headers: h }),
+      axios.get(`${API_BASE}/api/auth/2fa/status`, { headers: h }).catch(() => null),
+    ]).then(([settingsRes, tfaRes]) => {
+      setSettings(settingsRes.data.data);
+      if (tfaRes) setTwoFaEnabled(tfaRes.data.data?.enabled ?? false);
+    }).catch(() => toast.error('Could not load settings')).finally(() => setLoading(false));
   }, [authHeader]);
+
+  // ─── 2FA handlers ───────────────────────────────────────────────────────
+
+  const handle2faSetup = async () => {
+    setTwoFaLoading(true);
+    try {
+      const res = await axios.post(`${API_BASE}/api/auth/2fa/setup`, {}, { headers: authHeader() });
+      setTwoFaQr(res.data.data.qrDataUrl);
+      setTwoFaSecret(res.data.data.secret);
+      setTwoFaToken('');
+      setTwoFaStep('setup');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? '2FA setup failed');
+    } finally {
+      setTwoFaLoading(false);
+    }
+  };
+
+  const handle2faVerify = async () => {
+    if (twoFaToken.length !== 6) { toast.error('Enter the 6-digit code from your app'); return; }
+    setTwoFaLoading(true);
+    try {
+      await axios.post(`${API_BASE}/api/auth/2fa/verify`, { token: twoFaToken }, { headers: authHeader() });
+      setTwoFaEnabled(true);
+      setTwoFaStep('idle');
+      setTwoFaQr('');
+      setTwoFaSecret('');
+      toast.success('Two-factor authentication enabled');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? 'Invalid code');
+    } finally {
+      setTwoFaLoading(false);
+    }
+  };
+
+  const handle2faDisable = async () => {
+    if (twoFaToken.length !== 6) { toast.error('Enter the 6-digit code to confirm'); return; }
+    setTwoFaLoading(true);
+    try {
+      await axios.post(`${API_BASE}/api/auth/2fa/disable`, { token: twoFaToken }, { headers: authHeader() });
+      setTwoFaEnabled(false);
+      setTwoFaStep('idle');
+      setTwoFaToken('');
+      toast.success('Two-factor authentication disabled');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? 'Invalid code');
+    } finally {
+      setTwoFaLoading(false);
+    }
+  };
 
   // ─── Save notification channel toggle ──────────────────────────────────
 
@@ -451,19 +511,134 @@ export default function SellerSettingsPage() {
             </button>
           </form>
 
-          {/* 2FA — coming soon */}
-          <div className="border-t border-gray-100 pt-5">
+          {/* 2FA / TOTP */}
+          <div className="border-t border-gray-100 pt-5 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-gray-800">Two-Factor Authentication</h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Add an extra layer of security to your account with OTP verification.
+                  {twoFaEnabled
+                    ? 'TOTP 2FA is active. Use your authenticator app to log in.'
+                    : 'Add an extra layer of security using an authenticator app (Google Authenticator, Authy).'}
                 </p>
               </div>
-              <span className="px-3 py-1 text-xs font-semibold text-gray-500 bg-gray-100 rounded-full border border-gray-200">
-                Coming Soon
-              </span>
+              {twoFaEnabled ? (
+                <span className="px-3 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full border border-green-200">
+                  Enabled
+                </span>
+              ) : (
+                <span className="px-3 py-1 text-xs font-semibold text-gray-500 bg-gray-100 rounded-full border border-gray-200">
+                  Disabled
+                </span>
+              )}
             </div>
+
+            {/* Action buttons */}
+            {twoFaStep === 'idle' && (
+              <div className="flex gap-3">
+                {!twoFaEnabled ? (
+                  <button
+                    type="button"
+                    onClick={handle2faSetup}
+                    disabled={twoFaLoading}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {twoFaLoading ? 'Setting up…' : 'Enable 2FA'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setTwoFaToken(''); setTwoFaStep('disable'); }}
+                    className="px-4 py-2 text-sm font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    Disable 2FA
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Setup flow: show QR + secret + token input */}
+            {twoFaStep === 'setup' && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
+                <p className="text-sm text-gray-700 font-medium">
+                  Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.
+                </p>
+                {twoFaQr && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={twoFaQr} alt="2FA QR Code" className="w-40 h-40 border border-gray-200 rounded-lg" />
+                )}
+                <p className="text-xs text-gray-500">
+                  Manual key: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">{twoFaSecret}</code>
+                </p>
+                <div className="flex gap-3 items-end">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">6-digit code</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={twoFaToken}
+                      onChange={(e) => setTwoFaToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      className="w-36 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono tracking-widest"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handle2faVerify}
+                    disabled={twoFaLoading}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >
+                    {twoFaLoading ? 'Verifying…' : 'Activate 2FA'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTwoFaStep('idle')}
+                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Disable flow: verify current TOTP before disabling */}
+            {twoFaStep === 'disable' && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm text-red-700 font-medium">
+                  Enter the current 6-digit code from your authenticator app to disable 2FA.
+                </p>
+                <div className="flex gap-3 items-end">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">6-digit code</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={twoFaToken}
+                      onChange={(e) => setTwoFaToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      className="w-36 px-3 py-2 text-sm border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 font-mono tracking-widest"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handle2faDisable}
+                    disabled={twoFaLoading}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    {twoFaLoading ? 'Disabling…' : 'Confirm Disable'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTwoFaStep('idle')}
+                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Section>

@@ -75,7 +75,7 @@ export function IndiaHeatmap({ data }: IndiaHeatmapProps) {
         >
           <Tooltip
             contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
-            formatter={(value, _name, props: any) => [Number(value), props?.payload?.name ?? 'Country']}
+            formatter={(value, _name, props: { payload?: { name?: string } }) => [Number(value), props?.payload?.name ?? 'Country']}
             labelFormatter={() => ''}
           />
         </Treemap>

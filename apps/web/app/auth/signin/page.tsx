@@ -174,9 +174,11 @@ function SignInContent() {
 }
 
 export default function SignInPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const S = Suspense as any; // @types/react version compat shim
   return (
-    <Suspense>
+    <S>
       <SignInContent />
-    </Suspense>
+    </S>
   );
 }

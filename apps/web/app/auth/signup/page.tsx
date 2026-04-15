@@ -354,9 +354,11 @@ function SignUpContent() {
 }
 
 export default function SignUpPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const S = Suspense as any; // @types/react version compat shim
   return (
-    <Suspense>
+    <S>
       <SignUpContent />
-    </Suspense>
+    </S>
   );
 }

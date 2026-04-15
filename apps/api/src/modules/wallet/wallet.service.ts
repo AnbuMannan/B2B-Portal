@@ -298,7 +298,7 @@ export class WalletService {
         this.logger.warn(`Could not fetch seller details for invoice ${pendingId}: ${err.message}`);
       }
 
-      // 7b. Generate PDF/HTML invoice
+      // 7b. Generate invoice
       try {
         const invoicePath = await this.gstInvoice.generateInvoice({
           transactionId:     pendingId,
@@ -433,21 +433,73 @@ export class WalletService {
       where: { id: transactionId, sellerId: seller.id, type: 'PURCHASE' },
     });
 
-    if (!txn) {
-      throw new NotFoundException('Transaction not found');
-    }
-    if (!txn.invoicePath) {
-      throw new NotFoundException('Invoice not yet generated for this transaction');
-    }
-    if (!this.gstInvoice.invoiceExists(txn.invoicePath)) {
-      throw new NotFoundException('Invoice file not found');
+    if (!txn) throw new NotFoundException('Transaction not found');
+    if (!txn.invoiceNumber) throw new NotFoundException('Invoice number not assigned to this transaction');
+
+    // If invoicePath is missing or file was deleted, regenerate on-demand
+    const needsRegen = !txn.invoicePath || !this.gstInvoice.invoiceExists(txn.invoicePath);
+    if (needsRegen) {
+      this.logger.log(`Invoice missing for txn ${transactionId} — regenerating`);
+      try {
+        const sellerDetails = await this.prisma.seller.findUnique({
+          where: { id: seller.id },
+          select: { companyName: true, gstNumber: true, state: true },
+        });
+
+        const taxData = this.gstInvoice.computeTax(
+          parseFloat(txn.baseAmount?.toString() ?? '0'),
+          sellerDetails?.state ?? undefined,
+        );
+
+        const pack = txn.packId ? (CREDIT_PACKS as Record<string, any>)[txn.packId] ?? null : null;
+        const credits = txn.credits || 1;
+        const baseAmount = parseFloat(txn.baseAmount?.toString() ?? '0');
+        const totalAmount = parseFloat(txn.totalAmount?.toString() ?? '0');
+
+        const invoicePath = await this.gstInvoice.generateInvoice({
+          transactionId,
+          invoiceNumber:   txn.invoiceNumber,
+          date:            txn.createdAt,
+          buyerName:       sellerDetails?.companyName ?? 'Seller',
+          buyerGstin:      sellerDetails?.gstNumber   ?? undefined,
+          buyerState:      sellerDetails?.state        ?? undefined,
+          platformName:    'B2B Marketplace Pvt Ltd',
+          platformGstin:   'B2B-PLATFORM-GSTIN',
+          platformAddress: '123 Tech Park, Bangalore, Karnataka 560001',
+          packName:        pack?.name ?? txn.packId ?? 'Lead Credits',
+          credits,
+          baseAmount,
+          gstRate:         GST_RATE,
+          cgst:            taxData.cgst,
+          sgst:            taxData.sgst,
+          igst:            taxData.igst,
+          gstAmount:       taxData.gstAmount,
+          totalAmount,
+          razorpayPaymentId: txn.razorpayPaymentId ?? undefined,
+        });
+
+        await this.prisma.leadCreditTransaction.update({
+          where: { id: transactionId },
+          data:  { invoicePath },
+        });
+
+        return {
+          invoiceNumber: txn.invoiceNumber,
+          invoicePath,
+          buffer:        this.gstInvoice.readInvoice(invoicePath),
+          isHtml:        invoicePath.endsWith('.html'),
+        };
+      } catch (err: any) {
+        this.logger.error(`On-demand invoice regeneration failed for txn ${transactionId}: ${err.message}`);
+        throw new NotFoundException('Invoice could not be generated. Please contact support.');
+      }
     }
 
     return {
       invoiceNumber: txn.invoiceNumber,
-      invoicePath:   txn.invoicePath,
-      buffer:        this.gstInvoice.readInvoice(txn.invoicePath),
-      isHtml:        txn.invoicePath.endsWith('.html'),
+      invoicePath:   txn.invoicePath!,
+      buffer:        this.gstInvoice.readInvoice(txn.invoicePath!),
+      isHtml:        txn.invoicePath!.endsWith('.html'),
     };
   }
 

@@ -4,8 +4,13 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../database/database.service';
 import { RedisService } from '../../services/redis/redis.service';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
@@ -19,6 +24,7 @@ export class BuyLeadsService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly encryptionUtil: EncryptionUtil,
+    @InjectQueue('notifications') private readonly notificationsQueue: Queue,
   ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -159,7 +165,10 @@ export class BuyLeadsService {
   // ─── Reveal contact (idempotent, deducts 1 credit) ───────────────────────
 
   async revealContact(leadId: string, userId: string) {
+    this.logger.debug(`[revealContact] START — leadId=${leadId} userId=${userId}`);
+
     const seller = await this.getVerifiedSeller(userId);
+    this.logger.debug(`[revealContact] seller=${seller.id} kycStatus=${seller.kycStatus} walletBalance=${seller.leadCreditWallet?.balance}`);
 
     // KYC must be approved
     if (seller.kycStatus !== 'APPROVED') {
@@ -171,6 +180,7 @@ export class BuyLeadsService {
       where: { sellerId: seller.id, buyLeadId: leadId },
     });
     if (existing) {
+      this.logger.debug(`[revealContact] already revealed — returning existing record`);
       const decrypted = await this.decryptReveal(existing);
       return { ...decrypted, alreadyRevealed: true };
     }
@@ -182,6 +192,7 @@ export class BuyLeadsService {
         buyer: { include: { user: true } },
       },
     });
+    this.logger.debug(`[revealContact] lead found=${!!lead} isOpen=${lead?.isOpen} buyerId=${lead?.buyerId} buyerLoaded=${!!lead?.buyer} userLoaded=${!!lead?.buyer?.user}`);
 
     if (!lead || !lead.isOpen || lead.deletedAt) {
       throw new NotFoundException('Buy lead not found or closed');
@@ -196,51 +207,76 @@ export class BuyLeadsService {
       });
     }
 
-    // Encrypt buyer contact from User record
-    const buyerUser = lead.buyer.user;
-    const phone = buyerUser.phoneNumber ?? '';
-    const encryptedContact = this.encryptionUtil.encryptLeadContact({
-      buyerPhoneNumber: phone,
-      buyerEmail: buyerUser.email,
-      buyerWhatsapp: phone,
-    });
+    // Encrypt buyer contact from User record.
+    // phoneNumber is optional on User — fall back to 'N/A' so encryptField never
+    // receives an empty string (which it rejects).
+    const buyerUser = lead.buyer?.user;
+    if (!buyerUser) {
+      this.logger.error(`[revealContact] Lead ${leadId}: buyer user record not found. buyerId=${lead.buyerId} buyerLoaded=${!!lead.buyer}`);
+      throw new InternalServerErrorException('Buyer contact information is unavailable. Please try again later.');
+    }
+    const phone = buyerUser.phoneNumber || 'N/A';
+    this.logger.debug(`[revealContact] buyerUser=${buyerUser.id} phone=${phone ? 'set' : 'N/A'} email=${buyerUser.email ? 'set' : 'missing'}`);
 
-    const referenceId = `lead-reveal:${leadId}:${seller.id}`;
+    // Use a fresh UUID per attempt — the LeadContactReveal.findFirst above already
+    // guarantees idempotency; a deterministic referenceId can cause P2002 if a prior
+    // attempt left an orphaned LeadCreditTransaction that never got rolled back.
+    const referenceId = uuidv4();
 
     // Atomic transaction: deduct credit + record reveal
-    const reveal = await this.prisma.$transaction(async (tx) => {
-      await tx.leadCreditWallet.update({
-        where: { sellerId: seller.id },
-        data: {
-          balance: { decrement: 1 },
-          totalSpent: { increment: 1 },
-        },
+    let reveal: any;
+    try {
+      // Wrap encryption inside the try-catch so crypto errors surface properly
+      const encrypted = this.encryptionUtil.encryptLeadContact({
+        buyerPhoneNumber: phone,
+        buyerEmail: buyerUser.email || 'N/A',
+        buyerWhatsapp: phone,
       });
+      this.logger.debug(`[revealContact] encryption OK, starting transaction`);
 
-      await tx.leadCreditTransaction.create({
-        data: {
-          sellerId: seller.id,
-          walletId: wallet.id,
-          type: 'SPEND',
-          amount: 1,
-          referenceId,
-        },
+      reveal = await this.prisma.$transaction(async (tx) => {
+        await tx.leadCreditWallet.update({
+          where: { sellerId: seller.id },
+          data: {
+            balance: { decrement: 1 },
+            totalSpent: { increment: 1 },
+          },
+        });
+
+        await tx.leadCreditTransaction.create({
+          data: {
+            sellerId: seller.id,
+            walletId: wallet.id,
+            type: 'SPEND',
+            amount: 1,
+            referenceId,
+          },
+        });
+
+        return tx.leadContactReveal.create({
+          data: {
+            sellerId: seller.id,
+            buyLeadId: leadId,
+            buyerPhoneNumber: encrypted.buyerPhoneNumber,
+            buyerEmail: encrypted.buyerEmail,
+            buyerWhatsapp: encrypted.buyerWhatsapp,
+            buyerGstin: lead.buyer?.gstinNumber ?? null,
+            creditDeducted: true,
+          },
+        });
       });
+    } catch (err: any) {
+      // P2025: record to update not found (wallet row missing)
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        throw new BadRequestException('Wallet record not found. Please refresh and try again.');
+      }
+      this.logger.error(`[revealContact] transaction failed for lead ${leadId}: code=${err?.code} meta=${JSON.stringify(err?.meta)} message=${err?.message}`, err.stack);
+      throw new InternalServerErrorException(
+        `Failed to reveal contact. No credits were deducted. Please try again.`,
+      );
+    }
 
-      return tx.leadContactReveal.create({
-        data: {
-          sellerId: seller.id,
-          buyLeadId: leadId,
-          buyerPhoneNumber: encryptedContact.buyerPhoneNumber,
-          buyerEmail: encryptedContact.buyerEmail,
-          buyerWhatsapp: encryptedContact.buyerWhatsapp,
-          buyerGstin: lead.buyer.gstinNumber ?? null,
-          creditDeducted: true,
-        },
-      });
-    });
-
-    this.logger.log(`Seller ${seller.id} revealed lead ${leadId}`);
+    this.logger.log(`[revealContact] SUCCESS — seller ${seller.id} revealed lead ${leadId}`);
     const decrypted = await this.decryptReveal(reveal);
     return { ...decrypted, alreadyRevealed: false };
   }
@@ -532,6 +568,120 @@ export class BuyLeadsService {
 
     this.logger.log(`Seller ${seller.id} marked lead ${leadId} as converted`);
     return { convertedToOrder: true, alreadyMarked: false };
+  }
+
+  // ─── G18: Post a new buy lead + notify matching sellers ──────────────────
+
+  async postBuyLead(buyerUserId: string, dto: {
+    productName: string;
+    categoryId?: string;
+    quantity?: number;
+    unit?: string;
+    targetPriceMin?: number;
+    targetPriceMax?: number;
+    expectedCountry?: string;
+    contactChannel: string;
+    repeatOption?: string;
+    expiresInDays?: number;
+  }) {
+    // Resolve buyer record
+    const buyer = await this.prisma.buyer.findFirst({ where: { userId: buyerUserId } });
+    if (!buyer) throw new ForbiddenException('Buyer profile not found');
+
+    const expiresAt = dto.expiresInDays
+      ? new Date(Date.now() + dto.expiresInDays * 24 * 3600 * 1000)
+      : new Date(Date.now() + 30 * 24 * 3600 * 1000); // default 30 days
+
+    const lead = await this.prisma.buyLead.create({
+      data: {
+        buyerId:        buyer.id,
+        productName:    dto.productName,
+        categoryId:     dto.categoryId ?? null,
+        quantity:       dto.quantity ?? null,
+        unit:           dto.unit ?? null,
+        targetPriceMin: dto.targetPriceMin ?? null,
+        targetPriceMax: dto.targetPriceMax ?? null,
+        expectedCountry: dto.expectedCountry ?? 'India',
+        contactChannel: dto.contactChannel as any,
+        repeatOption:   (dto.repeatOption ?? 'NONE') as any,
+        isOpen:         true,
+        expiresAt,
+        expiryDate:     expiresAt,
+      },
+    });
+
+    this.logger.log(`Buy lead posted: ${lead.id} by buyer ${buyer.id}`);
+
+    // ── Async: find matching sellers and notify them ──────────────────────
+    this._notifyMatchingSellers(lead).catch((err) =>
+      this.logger.warn(`Lead notification failed for ${lead.id}: ${err.message}`),
+    );
+
+    return { leadId: lead.id, productName: lead.productName, expiresAt };
+  }
+
+  private async _notifyMatchingSellers(lead: any) {
+    // Find sellers whose approved products share the same category
+    const whereCategory = lead.categoryId
+      ? {
+          categories: {
+            some: { categoryId: lead.categoryId },
+          },
+        }
+      : {
+          name: { contains: lead.productName, mode: 'insensitive' as any },
+        };
+
+    const sellers = await this.prisma.seller.findMany({
+      where: {
+        kycStatus: 'APPROVED',
+        isVerified: true,
+        products: {
+          some: {
+            isActive: true,
+            adminApprovalStatus: 'APPROVED',
+            ...whereCategory,
+          },
+        },
+      },
+      select: { id: true, companyName: true, userId: true },
+      take: 50, // cap to avoid fan-out storms
+    });
+
+    this.logger.log(
+      `Lead ${lead.id}: notifying ${sellers.length} matching seller(s)`,
+    );
+
+    for (const seller of sellers) {
+      // Create in-app notification
+      await this.prisma.notification.create({
+        data: {
+          userId: seller.userId,
+          type:   'NEW_LEAD',
+          title:  `New buy lead: ${lead.productName}`,
+          body:   `A buyer is looking for "${lead.productName}". Reveal contact to connect.`,
+          isRead: false,
+          metadata: { leadId: lead.id },
+        },
+      }).catch(() => undefined);
+
+      // Queue email/SMS notification (best-effort)
+      this.notificationsQueue.add('new-lead-match', {
+        sellerId:    seller.id,
+        userId:      seller.userId,
+        companyName: seller.companyName,
+        leadId:      lead.id,
+        productName: lead.productName,
+        type: 'EMAIL',
+        templateId: 'new-lead-match',
+        data: {
+          companyName: seller.companyName,
+          productName: lead.productName,
+          leadId:      lead.id,
+        },
+        requestId: uuidv4(),
+      }).catch(() => undefined);
+    }
   }
 
   // ─── Module 12: Conversion rate stat ─────────────────────────────────────

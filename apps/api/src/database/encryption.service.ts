@@ -11,23 +11,16 @@ export class EncryptionService {
   private readonly ivLength = 12; // GCM standard
 
   constructor(private configService: ConfigService) {
-    const keyString = this.configService.get<string>('encryption.key') || process.env.ENCRYPTION_KEY;
+    const keyString = this.configService.get<string>('security.encryption.key') || process.env.ENCRYPTION_KEY;
     
     if (!keyString) {
       this.logger.error('ENCRYPTION_KEY not configured in environment');
       throw new Error('ENCRYPTION_KEY not configured in environment');
     }
 
-    // Key must be 32 bytes (256 bits) for AES-256
-    if (keyString.length < 32) {
-      this.logger.warn('Encryption key is less than 32 characters. Using SHA-256 hash of key.');
-      this.encryptionKey = crypto
-        .createHash('sha256')
-        .update(keyString)
-        .digest();
-    } else {
-      this.encryptionKey = Buffer.from(keyString.substring(0, 32));
-    }
+    // Always derive a 32-byte key via SHA-256 so the key works regardless
+    // of whether the raw string is ASCII-only or contains multi-byte characters.
+    this.encryptionKey = crypto.createHash('sha256').update(keyString).digest();
 
     this.logger.log('✅ EncryptionService initialized with AES-256-GCM');
   }
