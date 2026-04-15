@@ -1,5 +1,6 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from './strategies/jwt.strategy';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -77,6 +78,7 @@ export class AuthController {
   // ─── 2FA / TOTP endpoints ────────────────────────────────────────────────
 
   @Get('2fa/status')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get 2FA enabled status for current user' })
   async get2faStatus(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponseDto<any>> {
     const result = await this.authService.get2faStatus(user.id);
@@ -84,6 +86,7 @@ export class AuthController {
   }
 
   @Post('2fa/setup')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate TOTP secret and QR code — call before verify' })
   async setup2fa(@CurrentUser() user: AuthenticatedUser): Promise<ApiResponseDto<any>> {
@@ -92,6 +95,7 @@ export class AuthController {
   }
 
   @Post('2fa/verify')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify TOTP token and enable 2FA' })
   async verify2fa(
@@ -103,6 +107,7 @@ export class AuthController {
   }
 
   @Post('2fa/disable')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Disable 2FA after verifying a live TOTP token' })
   async disable2fa(

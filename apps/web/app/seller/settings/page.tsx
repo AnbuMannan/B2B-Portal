@@ -198,13 +198,10 @@ export default function SellerSettingsPage() {
 
   useEffect(() => {
     const h = authHeader();
-    Promise.all([
-      axios.get(`${API_BASE}/api/seller/settings`, { headers: h }),
-      axios.get(`${API_BASE}/api/auth/2fa/status`, { headers: h }).catch(() => null),
-    ]).then(([settingsRes, tfaRes]) => {
-      setSettings(settingsRes.data.data);
-      if (tfaRes) setTwoFaEnabled(tfaRes.data.data?.enabled ?? false);
-    }).catch(() => toast.error('Could not load settings')).finally(() => setLoading(false));
+    axios.get(`${API_BASE}/api/seller/settings`, { headers: h })
+      .then((res) => setSettings(res.data.data))
+      .catch(() => toast.error('Could not load settings'))
+      .finally(() => setLoading(false));
   }, [authHeader]);
 
   // ─── 2FA handlers ───────────────────────────────────────────────────────

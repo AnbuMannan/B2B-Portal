@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -107,7 +107,6 @@ function OtpModal({ userId, role, onSuccess, onError }: OtpModalProps) {
 // ─── Main signup page ─────────────────────────────────────────────────────────
 
 function SignUpContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get('returnUrl') ?? '/';
 
@@ -126,7 +125,7 @@ function SignUpContent() {
 
   const selectedRole = watch('role');
 
-  /** Store tokens in localStorage and redirect based on role */
+  /** Store tokens in localStorage and hard-navigate based on role */
   const finishAuth = (
     tokens: { accessToken: string; refreshToken: string },
     role: 'BUYER' | 'SELLER',
@@ -134,45 +133,48 @@ function SignUpContent() {
     localStorage.setItem('accessToken', tokens.accessToken);
     localStorage.setItem('refreshToken', tokens.refreshToken);
 
-    if (role === 'SELLER') {
-      router.push('/seller/register');
-    } else {
-      router.push(returnUrl === '/' ? '/buyer/dashboard' : returnUrl);
-    }
+    const dest = role === 'SELLER'
+      ? '/seller/register'
+      : (returnUrl && returnUrl !== '/' ? returnUrl : '/');
+    window.location.href = dest;
   };
 
   const onSubmit = async (data: SignUpForm) => {
     setServerError(null);
 
-    const res = await fetch(`${API_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: data.email,
-        password: data.password,
-        phoneNumber: data.phoneNumber || undefined,
-        role: data.role,
-      }),
-    });
+    try {
+      const res = await fetch(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          phoneNumber: data.phoneNumber || undefined,
+          role: data.role,
+        }),
+      });
 
-    const json = await res.json();
+      const json = await res.json();
 
-    if (!res.ok || !json.success) {
-      setServerError(json.message ?? 'Registration failed. Please try again.');
-      return;
-    }
+      if (!res.ok || !json.success) {
+        setServerError(json.message ?? 'Registration failed. Please try again.');
+        return;
+      }
 
-    const payload = json.data;
+      const payload = json.data;
 
-    // Phone provided → OTP required before tokens are issued
-    if (payload?.userId && !payload?.accessToken) {
-      setOtpState({ userId: payload.userId, role: data.role });
-      return;
-    }
+      // Phone provided → OTP required before tokens are issued
+      if (payload?.userId && !payload?.accessToken) {
+        setOtpState({ userId: payload.userId, role: data.role });
+        return;
+      }
 
-    // No phone → tokens issued immediately
-    if (payload?.accessToken) {
-      finishAuth({ accessToken: payload.accessToken, refreshToken: payload.refreshToken }, data.role);
+      // No phone → tokens issued immediately
+      if (payload?.accessToken) {
+        finishAuth({ accessToken: payload.accessToken, refreshToken: payload.refreshToken }, data.role);
+      }
+    } catch {
+      setServerError('Network error. Please check your connection and try again.');
     }
   };
 
