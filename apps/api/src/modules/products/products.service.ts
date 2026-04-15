@@ -8,7 +8,10 @@ import { RedisService } from '../../services/redis/redis.service';
 import { ProductsQueryDto, CategoryProductsQueryDto, ProductResponseDto, ProductDetailResponseDto, ProductSortBy, CreateEnquiryDto } from './dto/products.dto';
 import { PaginationParamsDto, PaginatedResponseDto, PaginationMetaDto } from '../../common/dto/pagination.dto';
 import { CacheInvalidationService } from '../../common/services/cache-invalidation.service';
+import { Prisma } from '@prisma/client';
 
+// This will allow line 509 to compile:
+const priceConditions: Prisma.ProductWhereInput[] = [];
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
