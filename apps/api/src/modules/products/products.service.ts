@@ -8,10 +8,6 @@ import { RedisService } from '../../services/redis/redis.service';
 import { ProductsQueryDto, CategoryProductsQueryDto, ProductResponseDto, ProductDetailResponseDto, ProductSortBy, CreateEnquiryDto } from './dto/products.dto';
 import { PaginationParamsDto, PaginatedResponseDto, PaginationMetaDto } from '../../common/dto/pagination.dto';
 import { CacheInvalidationService } from '../../common/services/cache-invalidation.service';
-import { Prisma } from '@prisma/client';
-
-// This will allow line 509 to compile:
-const priceConditions: Prisma.ProductWhereInput[] = [];
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
@@ -509,7 +505,8 @@ export class ProductsService {
         // For JSONB filtering, we need to check all tiers 
         // This query checks if any tier's price falls within the range 
         //const priceConditions = [];
-        const priceConditions: Prisma.ProductWhereInput[] = [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const priceConditions: any[] = [];
 
         if (filters.priceMin !== undefined) {
           priceConditions.push({

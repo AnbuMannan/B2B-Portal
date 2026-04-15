@@ -6,8 +6,6 @@ import {
   BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-//import { PrismaClientKnownRequestError } from '@prisma/client';
 import * as crypto from 'crypto';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
@@ -268,7 +266,7 @@ export class BuyLeadsService {
       });
     } catch (err: any) {
       // P2025: record to update not found (wallet row missing)
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      if (err?.code === 'P2025') {
         throw new BadRequestException('Wallet record not found. Please refresh and try again.');
       }
       this.logger.error(`[revealContact] transaction failed for lead ${leadId}: code=${err?.code} meta=${JSON.stringify(err?.meta)} message=${err?.message}`, err.stack);
