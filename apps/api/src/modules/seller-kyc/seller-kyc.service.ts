@@ -139,13 +139,12 @@ export class SellerKycService {
     for (const doc of docsToSave) {
       docUpserts.push(
         this.prisma.sellerKycDocument.upsert({
-          where: {
-            // We need a compound unique — use create/update pattern instead
-            id: (await this.prisma.sellerKycDocument.findFirst({
-              where: { sellerId: seller.id, documentType: doc.documentType },
-              select: { id: true },
-            }))?.id ?? 'new',
-          },
+                  where: { 
+                    id: (await this.prisma.sellerKycDocument.findFirst({
+                          where: { sellerId: seller.id, documentType: doc.documentType },
+                          select: { id: true }
+                        }))?.id ?? '00000000-0000-0000-0000-000000000000' // Use a dummy UUID format if your ID is a UUID
+                  },
           create: {
             sellerId: seller.id,
             documentType: doc.documentType,
