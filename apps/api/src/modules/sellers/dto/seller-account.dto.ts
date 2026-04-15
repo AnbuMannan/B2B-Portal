@@ -107,12 +107,12 @@ export class ChangePasswordDto {
   @ApiProperty({ example: 'OldPassword123!' })
   @IsString()
   @MinLength(8)
-  currentPassword: string;
+  currentPassword!: string;
 
   @ApiProperty({ example: 'NewPassword456!' })
   @IsString()
   @MinLength(8)
-  newPassword: string;
+  newPassword!: string;
 }
 
 // ─── Account Deactivation ─────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ export class DeactivateAccountDto {
   @ApiProperty({ example: 'CurrentPassword123!' })
   @IsString()
   @MinLength(1)
-  password: string;
+  password!: string;
 
   @ApiProperty({ example: 'Closing my business', required: false })
   @IsString()

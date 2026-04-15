@@ -50,7 +50,7 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
       this.logger.log('✅ Database connection validated successfully');
     } catch (error) {
       this.logger.error('❌ Database connection validation failed', error);
-      throw new Error(`Database connection failed: ${error.message}`);
+      throw new Error(`Database connection failed: ${(error as Error).message}`);
     }
   }
 }

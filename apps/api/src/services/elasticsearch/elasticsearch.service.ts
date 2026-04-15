@@ -4,7 +4,7 @@ import { Client, ClientOptions } from '@elastic/elasticsearch';
 
 @Injectable()
 export class ElasticsearchService {
-  private client: Client;
+  private client!: Client;
   private readonly logger = new Logger(ElasticsearchService.name);
 
   constructor(private configService: ConfigService) {
@@ -48,7 +48,7 @@ export class ElasticsearchService {
       }
     } catch (error) {
       this.logger.error('❌ Elasticsearch connection validation failed', error);
-      throw new Error(`Elasticsearch connection failed: ${error.message}`);
+      throw new Error(`Elasticsearch connection failed: ${(error as Error).message}`);
     }
   }
 
@@ -63,7 +63,7 @@ export class ElasticsearchService {
     try {
       return await this.client.search(params);
     } catch (error) {
-      this.logger.error(`Elasticsearch search error: ${error.message}`, error);
+      this.logger.error(`Elasticsearch search error: ${(error as Error).message}`, error);
       throw error;
     }
   }

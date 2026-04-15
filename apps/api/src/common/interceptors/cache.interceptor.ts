@@ -61,7 +61,7 @@ export class CacheInterceptor implements NestInterceptor {
         return of(cached);
       }
     } catch (error) {
-      this.logger.warn(`Cache read error: ${error.message}`);
+      this.logger.warn(`Cache read error: ${(error as Error).message}`);
       // Continue to handler on cache error
     }
 
@@ -78,7 +78,7 @@ export class CacheInterceptor implements NestInterceptor {
             this.logger.debug(`Cached: ${cacheKey} for ${ttl}s`);
           }
         } catch (error) {
-          this.logger.warn(`Failed to cache: ${cacheKey} - ${error.message}`);
+          this.logger.warn(`Failed to cache: ${cacheKey} - ${(error as Error).message}`);
         }
       }),
     );

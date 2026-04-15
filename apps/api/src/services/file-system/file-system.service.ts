@@ -30,7 +30,7 @@ export class FileSystemService {
       
     } catch (error) {
       this.logger.error('❌ File system validation failed', error);
-      throw new Error(`File system validation failed: ${error.message}`);
+      throw new Error(`File system validation failed: ${(error as Error).message}`);
     }
   }
 

@@ -16,16 +16,16 @@ export class TierPricingDto {
   @ApiProperty({ example: 1500 })
   @IsNumber()
   @Min(0)
-  price: number;
+  price!: number;
 
   @ApiProperty({ example: 10, description: 'Minimum order quantity' })
   @IsNumber()
   @Min(1)
-  moq: number;
+  moq!: number;
 
   @ApiProperty({ example: true })
   @IsBoolean()
-  enabled: boolean;
+  enabled!: boolean;
 }
 
 export class MultiTierPricingDto {
@@ -51,7 +51,7 @@ export class MultiTierPricingDto {
 export class CreateSellerProductDto {
   @ApiProperty({ example: 'Stainless Steel Bolts M8x30' })
   @IsString()
-  name: string;
+  name!: string;
 
   @ApiProperty({ required: false })
   @IsString()
@@ -76,7 +76,7 @@ export class CreateSellerProductDto {
   @IsObject()
   @ValidateNested()
   @Type(() => MultiTierPricingDto)
-  multiTierPricing: MultiTierPricingDto;
+  multiTierPricing!: MultiTierPricingDto;
 
   @ApiProperty({ type: [String], required: false })
   @IsArray()

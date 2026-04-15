@@ -25,22 +25,22 @@ export class KycStep1Dto {
   @ApiProperty({ example: 'Bharat Traders Pvt Ltd' })
   @IsString()
   @MinLength(3, { message: 'Company name must be at least 3 characters' })
-  companyName: string;
+  companyName!: string;
 
   @ApiProperty({ enum: CompanyTypeDto })
   @IsEnum(CompanyTypeDto, { message: 'companyType must be PROPRIETORSHIP, PRIVATE_LIMITED, or LLP' })
-  companyType: CompanyTypeDto;
+  companyType!: CompanyTypeDto;
 
   @ApiProperty({ example: ['TEXTILES', 'GARMENTS'], isArray: true })
   @IsArray()
   @IsString({ each: true })
-  industryType: string[];
+  industryType!: string[];
 
   @ApiProperty({ enum: BusinessModelDto })
   @IsEnum(BusinessModelDto)
-  businessModel: BusinessModelDto;
+  businessModel!: BusinessModelDto;
 
   @ApiProperty({ example: false })
   @IsBoolean()
-  hasIEC: boolean;
+  hasIEC!: boolean;
 }

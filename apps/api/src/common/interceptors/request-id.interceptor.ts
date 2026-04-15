@@ -60,7 +60,7 @@ export class RequestIdInterceptor implements NestInterceptor {
           return of(cachedResult);
         }
       } catch (error) {
-        this.logger.error(`Idempotency check failed for ${requestId}: ${error.message}`);
+        this.logger.error(`Idempotency check failed for ${requestId}: ${(error as Error).message}`);
         // Continue normally - idempotency is best-effort to avoid blocking transactions
       }
     }

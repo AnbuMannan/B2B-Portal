@@ -22,7 +22,7 @@ const INDIAN_STATES = [
 export class AddressDto {
   @ApiProperty({ example: '12, Gandhi Nagar' })
   @IsString()
-  addressLine1: string;
+  addressLine1!: string;
 
   @ApiProperty({ example: 'Near Post Office', required: false })
   @IsString()
@@ -31,24 +31,24 @@ export class AddressDto {
 
   @ApiProperty({ example: 'Mumbai' })
   @IsString()
-  city: string;
+  city!: string;
 
   @ApiProperty({ example: 'Maharashtra' })
   @IsString()
   @IsIn(INDIAN_STATES, { message: 'Please select a valid Indian state' })
-  state: string;
+  state!: string;
 
   @ApiProperty({ example: '400001' })
   @IsString()
   @Matches(/^\d{6}$/, { message: 'Pincode must be exactly 6 digits' })
-  pincode: string;
+  pincode!: string;
 }
 
 export class KycStep2Dto {
   @ApiProperty({ type: AddressDto })
   @ValidateNested()
   @Type(() => AddressDto)
-  registeredOfficeAddress: AddressDto;
+  registeredOfficeAddress!: AddressDto;
 
   @ApiProperty({ type: AddressDto, required: false })
   @ValidateNested()
@@ -58,5 +58,5 @@ export class KycStep2Dto {
 
   @ApiProperty({ example: false, description: 'True if business address same as registered' })
   @IsBoolean()
-  sameAsRegistered: boolean;
+  sameAsRegistered!: boolean;
 }

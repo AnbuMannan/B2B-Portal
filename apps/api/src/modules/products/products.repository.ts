@@ -72,7 +72,7 @@ export class ProductsRepository {
       };
     } catch (error) {
       // Fallback to database search if Elasticsearch fails
-      console.warn('Elasticsearch search failed, falling back to database:', error.message);
+      console.warn('Elasticsearch search failed, falling back to database:', (error as Error).message);
       return this.searchProductsInDatabase(searchTerm, paginationParams, productsQuery);
     }
   }

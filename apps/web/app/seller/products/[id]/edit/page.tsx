@@ -54,6 +54,7 @@ export default function EditProductPage() {
       }
     };
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleSubmit = async (data: any) => {

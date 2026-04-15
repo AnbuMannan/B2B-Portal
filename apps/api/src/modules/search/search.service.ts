@@ -137,7 +137,7 @@ export class SearchService implements OnModuleInit {
     try {
       result = await this.searchElasticsearch(dto);
     } catch (error) {
-      this.logger.error(`Elasticsearch search failed — falling back to Prisma: ${error.message}`);
+      this.logger.error(`Elasticsearch search failed — falling back to Prisma: ${(error as Error).message}`);
       result = await this.searchPrismaFallback(dto);
     }
 
@@ -619,7 +619,7 @@ export class SearchService implements OnModuleInit {
       this.logger.log(`Deleted product ${productId} from '${INDEX_NAME}'`);
     } catch (error) {
       // 404 means it was never indexed — not an error worth throwing
-      if (error?.meta?.statusCode !== 404) {
+      if ((error as any)?.meta?.statusCode !== 404) {
         throw error;
       }
     }
@@ -678,6 +678,49 @@ export class SearchService implements OnModuleInit {
       primaryImage: images[0] ?? null,
       createdAt: product.createdAt ?? new Date(),
     };
+  }
+
+  // ─── CTR Click Tracking ───────────────────────────────────────────────────────
+
+  /**
+   * Records a click event against the most recent SearchLog entry for this query.
+   * Used by POST /api/search/track-click from the frontend.
+   */
+  async trackClick(
+    query: string,
+    productId: string,
+    position: number,
+    userId?: string,
+  ): Promise<void> {
+    // Update the most recent SearchLog for this query/user, if available
+    const log = await (this.prisma as any).searchLog.findFirst({
+      where: {
+        query,
+        clickedProductId: null,
+        ...(userId ? { userId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (log) {
+      await (this.prisma as any).searchLog.update({
+        where: { id: log.id },
+        data: { clickedProductId: productId, resultPosition: position },
+      });
+    } else {
+      // Log wasn't created yet (direct click from autocomplete) — create a click log
+      await (this.prisma as any).searchLog.create({
+        data: {
+          query,
+          resultsCount: 0,
+          clickedProductId: productId,
+          resultPosition: position,
+          userId: userId ?? null,
+        },
+      });
+    }
+
+    this.logger.log(`CTR tracked: query="${query}" product=${productId} position=${position}`);
   }
 
   // ─── Trending Products ────────────────────────────────────────────────────────

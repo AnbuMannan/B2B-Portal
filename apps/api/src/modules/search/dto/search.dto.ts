@@ -69,7 +69,7 @@ export class SearchRequestDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
-  q: string;
+  q!: string;
 
   @IsOptional()
   @IsInt()
@@ -91,13 +91,13 @@ export class SearchRequestDto {
 export class AutocompleteQueryDto {
   @IsString()
   @IsNotEmpty()
-  q: string;
+  q!: string;
 }
 
 export class IndexProductDto {
   @IsString()
   @IsNotEmpty()
-  productId: string;
+  productId!: string;
 }
 
 // ─── Response shapes ───────────────────────────────────────────────────────────

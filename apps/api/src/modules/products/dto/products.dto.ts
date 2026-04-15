@@ -78,48 +78,48 @@ export class ProductsQueryDto {
 
 export class PricingTierDto {
   @ApiProperty({ example: 'retail' })
-  tier: string;
+  tier!: string;
 
   @ApiProperty({ example: 1000 })
-  price: number;
+  price!: number;
 
   @ApiProperty({ example: 10 })
-  moq: number;
+  moq!: number;
 }
 
 export class ProductResponseDto {
   @ApiProperty({ example: 'clxyz123' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ example: 'iPhone 15 Pro Max' })
-  name: string;
+  name!: string;
 
   @ApiProperty({ example: 'Latest iPhone with advanced camera features' })
   description?: string;
 
   @ApiProperty({ example: 'https://example.com/image.jpg' })
-  image: string;
+  image!: string;
 
   @ApiProperty({ example: 'Apple Inc.' })
-  sellerCompanyName: string;
+  sellerCompanyName!: string;
 
   @ApiProperty({ example: 'Manufacturer' })
-  sellerType: string;
+  sellerType!: string;
 
   @ApiProperty({ example: true })
-  isVerified: boolean;
+  isVerified!: boolean;
 
   @ApiProperty({ type: [PricingTierDto] })
-  pricingTiers: PricingTierDto[];
+  pricingTiers!: PricingTierDto[];
 
   @ApiProperty({ example: 'TN' })
-  sellerState: string;
+  sellerState!: string;
 
   @ApiProperty({ example: ['GST Verified', 'IEC Global'] })
-  verificationBadges: string[];
+  verificationBadges!: string[];
 
   @ApiProperty({ example: '2024-01-15T10:30:00.000Z' })
-  createdAt: Date;
+  createdAt!: Date;
 }
 
 export enum ContactChannel {
@@ -133,11 +133,11 @@ export class CreateEnquiryDto {
   @IsNumber()
   @Min(1, { message: 'Quantity must be at least 1' })
   @Type(() => Number)
-  quantity: number;
+  quantity!: number;
 
   @ApiProperty({ example: 'pieces', description: 'Unit of measure' })
   @IsString()
-  unit: string;
+  unit!: string;
 
   @ApiProperty({ example: 1000, required: false, description: 'Minimum target price in INR' })
   @IsNumber()
@@ -155,7 +155,7 @@ export class CreateEnquiryDto {
 
   @ApiProperty({ enum: ContactChannel, example: ContactChannel.WHATSAPP })
   @IsEnum(ContactChannel)
-  contactChannel: ContactChannel;
+  contactChannel!: ContactChannel;
 }
 
 /**
@@ -246,7 +246,7 @@ export class CategoryProductsQueryDto {
 
 export class ProductDetailResponseDto extends ProductResponseDto {
   @ApiProperty({ example: 'clxyz123' })
-  sellerId: string;
+  sellerId!: string;
 
   @ApiProperty({ example: '1234567890' })
   hsnCode?: string;
@@ -255,17 +255,17 @@ export class ProductDetailResponseDto extends ProductResponseDto {
   countryOfOrigin?: string;
 
   @ApiProperty({ example: 'IN_STOCK' })
-  availabilityStatus: string;
+  availabilityStatus!: string;
 
   @ApiProperty({ type: [String], example: ['Electronics', 'Mobile Phones'] })
-  categories: string[];
+  categories!: string[];
 
   @ApiProperty({ type: [String], example: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'] })
-  images: string[];
+  images!: string[];
 
   @ApiProperty({ example: 150 })
-  viewCount: number;
+  viewCount!: number;
 
   @ApiProperty({ type: [ProductResponseDto] })
-  relatedProducts: ProductResponseDto[];
+  relatedProducts!: ProductResponseDto[];
 }

@@ -19,20 +19,20 @@ export class KycStep3Dto {
   @ApiProperty({ example: '27AAPFU0939F1ZV' })
   @IsString()
   @Matches(GSTIN_REGEX, { message: 'Invalid GSTIN format (e.g. 27AAPFU0939F1ZV)' })
-  gstNumber: string;
+  gstNumber!: string;
 
   @ApiProperty({ example: '/uploads/kyc-docs/gst-cert-abc.pdf' })
   @IsString()
-  gstCertificateUrl: string;
+  gstCertificateUrl!: string;
 
   @ApiProperty({ example: 'AAPFU0939F' })
   @IsString()
   @Matches(PAN_REGEX, { message: 'Invalid PAN format (e.g. ABCDE1234F)' })
-  panNumber: string;
+  panNumber!: string;
 
   @ApiProperty({ example: '/uploads/kyc-docs/pan-card-abc.jpg' })
   @IsString()
-  panCardUrl: string;
+  panCardUrl!: string;
 
   @ApiProperty({ example: 'AB1234567C', required: false, description: 'Required if hasIEC=true' })
   @Transform(emptyToUndefined)

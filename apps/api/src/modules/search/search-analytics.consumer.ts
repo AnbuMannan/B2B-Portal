@@ -34,7 +34,7 @@ export class SearchAnalyticsConsumer {
       });
     } catch (error) {
       // Analytics failures must never bubble up to impact search response
-      this.logger.warn(`Failed to write SearchLog entry: ${error.message}`);
+      this.logger.warn(`Failed to write SearchLog entry: ${(error as Error).message}`);
     }
   }
 }

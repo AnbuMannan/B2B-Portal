@@ -66,7 +66,7 @@ export class EncryptionService {
       return encrypted;
     } catch (error) {
       this.logger.error('Encryption failed', error);
-      throw new Error(`Encryption failed: ${error.message}`);
+      throw new Error(`Encryption failed: ${(error as Error).message}`);
     }
   }
 
@@ -116,7 +116,7 @@ export class EncryptionService {
       return plaintext;
     } catch (error) {
       this.logger.error('Decryption failed', error);
-      throw new Error(`Decryption failed: ${error.message}`);
+      throw new Error(`Decryption failed: ${(error as Error).message}`);
     }
   }
 
@@ -164,7 +164,7 @@ export class EncryptionService {
         try {
           decrypted[field] = this.decryptField(decrypted[field]) as any;
         } catch (error) {
-          this.logger.warn(`Failed to decrypt field ${String(field)}: ${error.message}`);
+          this.logger.warn(`Failed to decrypt field ${String(field)}: ${(error as Error).message}`);
           // Don't crash, leave field as-is
         }
       }

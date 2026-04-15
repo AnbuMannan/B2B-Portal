@@ -3,37 +3,37 @@ import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class SellerCatalogueItemDto {
-  id: string;
-  name: string;
-  images: any;
-  multiTierPricing: any;
-  categoryName: string;
+  id!: string;
+  name!: string;
+  images!: any;
+  multiTierPricing!: any;
+  categoryName!: string;
 }
 
 export class SellerProfileDto {
-  id: string;
-  companyName: string;
-  companyType: string;
-  city: string | null;
-  state: string | null;
-  companyInitials: string;
-  badges: string[];
-  yearsInBusiness: number;
-  productCount: number;
-  totalProductViews: number;
-  industryTypes: string[];
-  cataloguePreview: SellerCatalogueItemDto[];
+  id!: string;
+  companyName!: string;
+  companyType!: string;
+  city!: string | null;
+  state!: string | null;
+  companyInitials!: string;
+  badges!: string[];
+  yearsInBusiness!: number;
+  productCount!: number;
+  totalProductViews!: number;
+  industryTypes!: string[];
+  cataloguePreview!: SellerCatalogueItemDto[];
 }
 
 export class SellerListItemDto {
-  id: string;
-  companyName: string;
-  city: string | null;
-  state: string | null;
-  companyInitials: string;
-  badges: string[];
-  productCount: number;
-  yearsInBusiness: number;
+  id!: string;
+  companyName!: string;
+  city!: string | null;
+  state!: string | null;
+  companyInitials!: string;
+  badges!: string[];
+  productCount!: number;
+  yearsInBusiness!: number;
 }
 
 export class SellerProductsQueryDto {

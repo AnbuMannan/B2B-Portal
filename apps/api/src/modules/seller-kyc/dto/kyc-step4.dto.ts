@@ -7,11 +7,11 @@ const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
 export class KycStep4Dto {
   @ApiProperty({ example: 'Rajesh Kumar' })
   @IsString()
-  fullName: string;
+  fullName!: string;
 
   @ApiProperty({ example: 'Managing Director' })
   @IsString()
-  designation: string;
+  designation!: string;
 
   @ApiProperty({ required: false, description: 'URL of uploaded director photo' })
   @IsString()
@@ -32,5 +32,5 @@ export class KycStep4Dto {
   @IsString()
   @Length(4, 4, { message: 'Aadhaar: only last 4 digits accepted (UIDAI guidelines)' })
   @Matches(/^\d{4}$/, { message: 'Aadhaar last 4 digits must be numeric' })
-  aadhaarLastFour: string;
+  aadhaarLastFour!: string;
 }

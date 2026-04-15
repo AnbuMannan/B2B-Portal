@@ -41,31 +41,31 @@ export function enrichPack(packId: CreditPackId): CreditPack {
 export class CreateOrderDto {
   @ApiProperty({ example: 'standard', enum: ['starter', 'standard', 'pro', 'enterprise'] })
   @IsEnum(['starter', 'standard', 'pro', 'enterprise'])
-  packId: CreditPackId;
+  packId!: CreditPackId;
 }
 
 export class VerifyPaymentDto {
   @ApiProperty({ example: 'order_abc123' })
   @IsString()
   @IsNotEmpty()
-  razorpayOrderId: string;
+  razorpayOrderId!: string;
 
   @ApiProperty({ example: 'pay_xyz789' })
   @IsString()
   @IsNotEmpty()
-  razorpayPaymentId: string;
+  razorpayPaymentId!: string;
 
   @ApiProperty({ example: 'hmac_signature_here' })
   @IsString()
   @IsNotEmpty()
-  razorpaySignature: string;
+  razorpaySignature!: string;
 }
 
 export class SpendCreditDto {
   @ApiProperty({ example: 'lead-reveal:leadId:sellerId', description: 'Idempotency reference' })
   @IsString()
   @IsNotEmpty()
-  referenceId: string;
+  referenceId!: string;
 
   @ApiProperty({ example: 1, description: 'Credits to deduct (default 1)' })
   @IsOptional()

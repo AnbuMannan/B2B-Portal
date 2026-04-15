@@ -45,7 +45,7 @@ export class SearchSyncConsumer {
 
       this.logger.log(`Completed search-sync job ${job.id}`);
     } catch (error) {
-      this.logger.error(`search-sync job ${job.id} failed: ${error.message}`, error.stack);
+      this.logger.error(`search-sync job ${job.id} failed: ${(error as Error).message}`, (error as Error).stack);
       throw error; // Rethrow so BullMQ retries per defaultJobOptions
     }
   }

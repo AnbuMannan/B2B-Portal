@@ -27,7 +27,7 @@ export class CacheInvalidationService {
 
       this.logger.log(`✅ Product caches invalidated`);
     } catch (error) {
-      this.logger.warn(`Failed to invalidate product caches: ${error.message}`);
+      this.logger.warn(`Failed to invalidate product caches: ${(error as Error).message}`);
     }
   }
 
@@ -46,7 +46,7 @@ export class CacheInvalidationService {
 
       this.logger.log(`✅ Seller caches invalidated`);
     } catch (error) {
-      this.logger.warn(`Failed to invalidate seller caches: ${error.message}`);
+      this.logger.warn(`Failed to invalidate seller caches: ${(error as Error).message}`);
     }
   }
 
@@ -66,7 +66,7 @@ export class CacheInvalidationService {
 
       this.logger.log(`✅ All caches invalidated (${keys?.length || 0} keys)`);
     } catch (error) {
-      this.logger.warn(`Failed to invalidate all caches: ${error.message}`);
+      this.logger.warn(`Failed to invalidate all caches: ${(error as Error).message}`);
     }
   }
 }

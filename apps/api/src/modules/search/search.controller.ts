@@ -10,9 +10,17 @@ import {
   ValidationPipe,
   UsePipes,
 } from '@nestjs/common';
+import { IsString, IsInt, Min, IsOptional } from 'class-validator';
 import { Request } from 'express';
 import { SearchService } from './search.service';
 import { SearchRequestDto, AutocompleteQueryDto, IndexProductDto } from './dto/search.dto';
+
+export class TrackClickDto {
+  @IsString() query!: string;
+  @IsString() productId!: string;
+  @IsInt() @Min(0) position!: number;
+  @IsString() @IsOptional() sessionId?: string;
+}
 
 @Controller('search')
 export class SearchController {
@@ -67,5 +75,19 @@ export class SearchController {
   @Get('trending')
   async trending() {
     return this.searchService.getTrendingProducts(6);
+  }
+
+  /**
+   * POST /api/search/track-click
+   * Records which result was clicked and at what position (CTR tracking).
+   * Best-effort — never throws on failure.
+   */
+  @Post('track-click')
+  @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async trackClick(@Body() dto: TrackClickDto, @Req() req: Request) {
+    const userId = (req as any).user?.id ?? undefined;
+    await this.searchService.trackClick(dto.query, dto.productId, dto.position, userId).catch(() => undefined);
+    return { tracked: true };
   }
 }

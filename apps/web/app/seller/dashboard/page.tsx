@@ -146,6 +146,7 @@ export default function SellerDashboardPage() {
         }
       })
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -211,7 +212,7 @@ export default function SellerDashboardPage() {
             Add New Product
           </Link>
           <Link
-            href="/buy-leads"
+            href="/seller/buy-leads"
             className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -220,7 +221,7 @@ export default function SellerDashboardPage() {
             Browse Buy Leads
           </Link>
           <Link
-            href="/seller/wallet/recharge"
+            href="/seller/wallet"
             className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

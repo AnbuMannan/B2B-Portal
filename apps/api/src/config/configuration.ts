@@ -25,28 +25,28 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
-  POSTGRES_URL: string;
+  POSTGRES_URL!: string;
 
   @IsString()
   @IsNotEmpty()
-  POSTGRES_USER: string;
+  POSTGRES_USER!: string;
 
   @IsString()
   @IsNotEmpty()
-  POSTGRES_PASSWORD: string;
+  POSTGRES_PASSWORD!: string;
 
   @IsString()
   @IsNotEmpty()
-  REDIS_URL: string;
+  REDIS_URL!: string;
 
   @IsString()
   @IsNotEmpty()
-  ELASTICSEARCH_URL: string;
+  ELASTICSEARCH_URL!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(32)
-  JWT_SECRET: string;
+  JWT_SECRET!: string;
 
   @IsString()
   @IsNotEmpty()
@@ -55,23 +55,23 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   @MinLength(32)
-  NEXTAUTH_SECRET: string;
+  NEXTAUTH_SECRET!: string;
 
   @IsString()
   @IsNotEmpty()
-  NEXTAUTH_URL: string;
+  NEXTAUTH_URL!: string;
 
   @IsString()
   @IsNotEmpty()
-  RAZORPAY_KEY_ID: string;
+  RAZORPAY_KEY_ID!: string;
 
   @IsString()
   @IsNotEmpty()
-  RAZORPAY_KEY_SECRET: string;
+  RAZORPAY_KEY_SECRET!: string;
 
   @IsString()
   @IsNotEmpty()
-  MSG91_AUTHKEY: string;
+  MSG91_AUTHKEY!: string;
 
   @IsString()
   @IsOptional()
@@ -195,8 +195,11 @@ export const validateConfig = async (config: Record<string, any>) => {
 
 export default () => ({
   // Database
+  // Use DATABASE_URL (direct connection, no pgbouncer limit) for the runtime Prisma client.
+  // POSTGRES_URL has connection_limit=1 for pgbouncer/serverless; using it here would cap
+  // Prisma's pool to 1 connection and cause timeouts when concurrent queries run (e.g. dashboard).
   database: {
-    url: process.env.POSTGRES_URL,
+    url: process.env.DATABASE_URL || process.env.DIRECT_URL || process.env.POSTGRES_URL,
   },
   
   // Redis
