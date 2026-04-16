@@ -4,7 +4,7 @@
   "description": "B2B Marketplace NestJS Backend API",
   "private": true,
   "scripts": {
-    "build": "npx prisma generate --schema=src/database/schema.prisma && nest build"
+    "build": "npx prisma generate --schema=src/database/schema.prisma && nest build",
     "dev": "nest start --watch",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
