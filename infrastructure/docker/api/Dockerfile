@@ -17,6 +17,9 @@ COPY apps/api ./apps/api
 COPY packages/shared-types ./packages/shared-types
 COPY packages/shared-utils ./packages/shared-utils
 
+# Generate Prisma client (devDeps available here)
+RUN npm run db:generate --workspace=apps/api
+
 # Build the application
 RUN npm run build --workspace=apps/api
 
@@ -43,9 +46,9 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/packages/shared-utils/dist ./packages/shared-utils/dist
 
-# Copy Prisma schema and generate client
-COPY apps/api/prisma ./apps/api/prisma
-RUN npm run db:generate --workspace=apps/api
+# Copy generated Prisma client from builder (avoids needing prisma CLI in production)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 
 # Change ownership to non-root user
 RUN chown -R nextjs:nodejs /app
