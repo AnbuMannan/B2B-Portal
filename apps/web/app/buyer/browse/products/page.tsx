@@ -68,7 +68,7 @@ export default function BuyerBrowseProductsPage() {
       const saved: boolean = res.data?.data?.saved ?? false;
       setSavedIds((prev) => {
         const next = new Set(prev);
-        saved ? next.add(productId) : next.delete(productId);
+        if (saved) { next.add(productId); } else { next.delete(productId); }
         return next;
       });
       showToast(saved ? 'Product saved' : 'Product removed from saved list');

@@ -166,7 +166,7 @@ export default function SellersPage() {
       const saved: boolean = res.data?.data?.saved ?? false;
       setSavedIds((prev) => {
         const next = new Set(prev);
-        saved ? next.add(sellerId) : next.delete(sellerId);
+        if (saved) { next.add(sellerId); } else { next.delete(sellerId); }
         return next;
       });
       showToast(saved ? 'Seller saved to your list' : 'Seller removed from saved list');

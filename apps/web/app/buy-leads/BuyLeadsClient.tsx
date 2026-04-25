@@ -372,7 +372,7 @@ export function BuyLeadsClient({ hideShell = false }: { hideShell?: boolean }) {
   const handleToggleSave = useCallback(async (lead: BuyLead) => {
     if (!accessToken) return;
     const wasSaved = savedLeadIds.has(lead.id);
-    setSavedLeadIds((prev) => { const s = new Set(Array.from(prev)); wasSaved ? s.delete(lead.id) : s.add(lead.id); return s; });
+    setSavedLeadIds((prev) => { const s = new Set(Array.from(prev)); if (wasSaved) { s.delete(lead.id); } else { s.add(lead.id); } return s; });
     try {
       const res = await fetch(`${API_BASE}/api/seller/leads/${lead.id}/save`, {
         method: 'POST', headers: { Authorization: `Bearer ${accessToken}` },
@@ -381,7 +381,7 @@ export function BuyLeadsClient({ hideShell = false }: { hideShell?: boolean }) {
       if (!res.ok) throw new Error(json.message ?? 'Failed');
       toast.success(json.data?.saved ? 'Lead saved' : 'Lead removed from watchlist');
     } catch {
-      setSavedLeadIds((prev) => { const s = new Set(Array.from(prev)); wasSaved ? s.add(lead.id) : s.delete(lead.id); return s; });
+      setSavedLeadIds((prev) => { const s = new Set(Array.from(prev)); if (wasSaved) { s.add(lead.id); } else { s.delete(lead.id); } return s; });
       toast.error('Failed to update watchlist');
     }
   }, [accessToken, savedLeadIds]);
