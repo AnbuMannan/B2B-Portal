@@ -1,0 +1,97 @@
+{
+  "nav": {
+    "home": "Home",
+    "products": "Products",
+    "sellers": "Suppliers",
+    "postRequirement": "Post Requirement",
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "myAccount": "My Account",
+    "signOut": "Sign Out",
+    "dashboard": "Dashboard",
+    "searchPlaceholder": "Search products, suppliers..."
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong. Please try again.",
+    "save": "Save",
+    "cancel": "Cancel",
+    "submit": "Submit",
+    "back": "Back",
+    "viewAll": "View All",
+    "learnMore": "Learn More",
+    "contactSupplier": "Contact Supplier",
+    "saveProduct": "Save Product",
+    "savedProduct": "Saved",
+    "enquireNow": "Enquire Now",
+    "getQuote": "Get Quote",
+    "language": "Language",
+    "verified": "Verified",
+    "noResults": "No results found"
+  },
+  "hero": {
+    "title": "India's Premier B2B Marketplace",
+    "subtitle": "Connect with verified suppliers, post requirements, and grow your business",
+    "searchPlaceholder": "Search products, suppliers, categories...",
+    "searchButton": "Search",
+    "stats": {
+      "suppliers": "Verified Suppliers",
+      "products": "Products Listed",
+      "buyers": "Active Buyers",
+      "states": "States Covered"
+    }
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "email": "Email Address",
+    "password": "Password",
+    "forgotPassword": "Forgot Password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "registerAs": "Register as",
+    "buyer": "Buyer",
+    "seller": "Seller / Supplier",
+    "orContinueWith": "Or continue with",
+    "agreeTerms": "I agree to the Terms of Service and Privacy Policy"
+  },
+  "product": {
+    "hsnCode": "HSN Code",
+    "availability": "Availability",
+    "inStock": "In Stock",
+    "outOfStock": "Out of Stock",
+    "minOrder": "Min. Order",
+    "category": "Category",
+    "description": "Description",
+    "specifications": "Specifications",
+    "supplier": "Supplier",
+    "priceOnRequest": "Price on Request",
+    "sendEnquiry": "Send Enquiry",
+    "relatedProducts": "Related Products"
+  },
+  "seller": {
+    "registerBusiness": "Register Your Business",
+    "kycPending": "KYC Under Review",
+    "kycApproved": "KYC Approved",
+    "kycRejected": "KYC Rejected",
+    "listProduct": "List a Product",
+    "myProducts": "My Products",
+    "viewAnalytics": "View Analytics",
+    "wallet": "Lead Credits Wallet"
+  },
+  "buyer": {
+    "postRequirement": "Post a Requirement",
+    "myRequirements": "My Requirements",
+    "myQuotes": "My Quotes",
+    "myOrders": "My Orders",
+    "savedProducts": "Saved Products",
+    "savedSuppliers": "Saved Suppliers"
+  },
+  "footer": {
+    "rights": "All rights reserved",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "contact": "Contact Us",
+    "tagline": "Connecting Indian businesses, one trade at a time"
+  }
+}

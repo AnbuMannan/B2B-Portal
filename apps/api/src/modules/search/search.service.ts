@@ -470,12 +470,18 @@ export class SearchService implements OnModuleInit {
     if (seller.iecCode) badges.push('IEC Global');
 
     const images = Array.isArray(product.images) ? product.images : [];
+    const toAbsUrl = (p: string) => {
+      if (!p) return p;
+      if (p.startsWith('http://') || p.startsWith('https://')) return p;
+      const base = process.env.BACKEND_URL ?? 'http://localhost:4001';
+      return `${base}${p.startsWith('/') ? '' : '/'}${p}`;
+    };
 
     return {
       id: product.id,
       name: product.name,
       description: product.description ?? undefined,
-      primaryImage: images[0] ?? undefined,
+      primaryImage: images[0] ? toAbsUrl(images[0]) : undefined,
       sellerCompanyName: seller.companyName ?? '',
       sellerState: seller.state ?? undefined,
       sellerCity: seller.city ?? undefined,
@@ -675,7 +681,12 @@ export class SearchService implements OnModuleInit {
       countryOfOrigin: product.countryOfOrigin ?? null,
       availabilityStatus: product.availabilityStatus ?? null,
       adminApprovalStatus: product.adminApprovalStatus ?? 'PENDING',
-      primaryImage: images[0] ?? null,
+      primaryImage: images[0] ? (() => {
+        const p = images[0];
+        if (p.startsWith('http://') || p.startsWith('https://')) return p;
+        const base = process.env.BACKEND_URL ?? 'http://localhost:4001';
+        return `${base}${p.startsWith('/') ? '' : '/'}${p}`;
+      })() : null,
       createdAt: product.createdAt ?? new Date(),
     };
   }

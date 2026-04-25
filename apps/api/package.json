@@ -26,7 +26,8 @@
     "db:seed": "ts-node --transpile-only src/database/seed.ts",
     "db:migrate:ci": "node scripts/migrate.js",
     "db:deploy": "prisma migrate deploy --schema=src/database/schema.prisma",
-    "db:purge-reveals": "ts-node --transpile-only scripts/purge-contact-reveals.ts"
+    "db:purge-reveals": "ts-node --transpile-only scripts/purge-contact-reveals.ts",
+    "db:migrate-all": "node scripts/db-migrate-all.js"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.11.0",

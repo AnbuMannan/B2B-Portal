@@ -298,9 +298,9 @@ export class WalletService {
         this.logger.warn(`Could not fetch seller details for invoice ${pendingId}: ${err.message}`);
       }
 
-      // 7b. Generate invoice
+      // 7b. Generate invoice (with IRP registration when configured)
       try {
-        const invoicePath = await this.gstInvoice.generateInvoice({
+        const invoiceResult = await this.gstInvoice.generateInvoice({
           transactionId:     pendingId,
           invoiceNumber,
           date:              now,
@@ -323,7 +323,12 @@ export class WalletService {
         });
         await this.prisma.leadCreditTransaction.update({
           where: { id: pendingId },
-          data:  { invoicePath },
+          data: {
+            invoicePath: invoiceResult.invoicePath,
+            ...(invoiceResult.irn      && { irn: invoiceResult.irn }),
+            ...(invoiceResult.ackNo    && { ackNo: invoiceResult.ackNo }),
+            ...(invoiceResult.irpQrCode && { irpQrCode: invoiceResult.irpQrCode }),
+          },
         });
       } catch (err: any) {
         this.logger.error(`Invoice generation failed for txn ${pendingId}: ${err.message}`);
@@ -456,7 +461,7 @@ export class WalletService {
         const baseAmount = parseFloat(txn.baseAmount?.toString() ?? '0');
         const totalAmount = parseFloat(txn.totalAmount?.toString() ?? '0');
 
-        const invoicePath = await this.gstInvoice.generateInvoice({
+        const invoiceResult = await this.gstInvoice.generateInvoice({
           transactionId,
           invoiceNumber:   txn.invoiceNumber,
           date:            txn.createdAt,
@@ -480,14 +485,19 @@ export class WalletService {
 
         await this.prisma.leadCreditTransaction.update({
           where: { id: transactionId },
-          data:  { invoicePath },
+          data: {
+            invoicePath: invoiceResult.invoicePath,
+            ...(invoiceResult.irn       && { irn: invoiceResult.irn }),
+            ...(invoiceResult.ackNo     && { ackNo: invoiceResult.ackNo }),
+            ...(invoiceResult.irpQrCode && { irpQrCode: invoiceResult.irpQrCode }),
+          },
         });
 
         return {
           invoiceNumber: txn.invoiceNumber,
-          invoicePath,
-          buffer:        this.gstInvoice.readInvoice(invoicePath),
-          isHtml:        invoicePath.endsWith('.html'),
+          invoicePath:   invoiceResult.invoicePath,
+          buffer:        this.gstInvoice.readInvoice(invoiceResult.invoicePath),
+          isHtml:        invoiceResult.invoicePath.endsWith('.html'),
         };
       } catch (err: any) {
         this.logger.error(`On-demand invoice regeneration failed for txn ${transactionId}: ${err.message}`);

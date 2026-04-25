@@ -26,7 +26,7 @@ const HeroBanner = () => {
     } else if (searchType === 'suppliers') {
       router.push(`/search?q=${encodeURIComponent(trimmed)}&type=suppliers`)
     } else {
-      router.push(`/post-requirement`)
+      router.push(`/buyer/requirements/new`)
     }
   }
 
@@ -101,7 +101,7 @@ const HeroBanner = () => {
             Start Selling
           </Link>
           <Link
-            href="/post-requirement"
+            href="/buyer/requirements/new"
             className="rounded-lg border border-white/70 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
           >
             Post Your Requirement

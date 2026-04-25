@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from './strategies/jwt.strategy';
@@ -21,8 +22,10 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new buyer or seller account' })
   @ApiResponse({ status: 201, description: 'Registration successful; OTP sent if phone provided' })
   @ApiResponse({ status: 409, description: 'Email or phone already in use' })
-  async register(@Body() dto: RegisterDto): Promise<ApiResponseDto<any>> {
-    const result = await this.authService.register(dto);
+  async register(@Body() dto: RegisterDto, @Req() req: Request): Promise<ApiResponseDto<any>> {
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip;
+    const userAgent = req.headers['user-agent'];
+    const result = await this.authService.register(dto, ipAddress, userAgent);
     return ApiResponseDto.success('Registration successful', result);
   }
 

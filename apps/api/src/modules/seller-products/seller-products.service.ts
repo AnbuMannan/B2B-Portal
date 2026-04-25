@@ -11,11 +11,45 @@ import { CreateSellerProductDto, UpdateSellerProductDto } from './dto/seller-pro
 // Critical fields whose change resets an approved product back to PENDING review
 const CRITICAL_FIELDS = ['name', 'hsnCode', 'multiTierPricing', 'images'] as const;
 
+const DEFAULT_PROHIBITED_KEYWORDS = [
+  'weapon', 'firearms', 'pistol', 'revolver', 'rifle', 'shotgun', 'ammunition', 'bullet',
+  'grenade', 'explosive', 'bomb', 'landmine', 'cocaine', 'heroin', 'methamphetamine',
+  'fentanyl', 'mdma', 'lsd', 'opium', 'counterfeit', 'duplicate currency',
+  'tiger skin', 'elephant ivory', 'rhino horn', 'pangolin', 'sarin', 'mustard gas',
+  'human organ', 'kidney for sale',
+];
+
 @Injectable()
 export class SellerProductsService {
   private readonly logger = new Logger(SellerProductsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private async getKeywords(): Promise<string[]> {
+    const flag = await this.prisma.featureFlag.findUnique({
+      where: { name: 'prohibited_keywords' },
+    });
+    const data = flag?.targetAudience as { keywords?: string[] } | null;
+    return data?.keywords ?? DEFAULT_PROHIBITED_KEYWORDS;
+  }
+
+  private async screenForProhibitedContent(
+    productId: string,
+    name: string,
+    description: string | null,
+  ): Promise<void> {
+    const keywords = await this.getKeywords();
+    const text = `${name} ${description ?? ''}`.toLowerCase();
+    const matched = keywords.filter((kw) => text.includes(kw.toLowerCase()));
+    if (matched.length > 0) {
+      const flagReason = `Prohibited keyword match: ${matched.slice(0, 3).join(', ')}`;
+      await this.prisma.product.update({
+        where: { id: productId },
+        data: { isFlagged: true, flagReason },
+      });
+      this.logger.warn(`Product ${productId} auto-flagged: ${flagReason}`);
+    }
+  }
 
   /** Resolve sellerId from userId, ensuring KYC is approved */
   private async getVerifiedSeller(userId: string) {
@@ -46,6 +80,10 @@ export class SellerProductsService {
       throw new BadRequestException('At least one pricing tier must be enabled.');
     }
 
+    if ((dto.images ?? []).length > 8) {
+      throw new BadRequestException('A product may have at most 8 images.');
+    }
+
     const product = await this.prisma.product.create({
       data: {
         sellerId: seller.id,
@@ -57,8 +95,20 @@ export class SellerProductsService {
         images: (dto.images ?? []) as any,
         certifications: (dto.certifications ?? []) as any,
         countryOfOrigin: dto.countryOfOrigin ?? 'India',
+        partModelNumber: dto.partModelNumber ?? null,
+        minimumOrderQuantity: dto.minimumOrderQuantity ?? null,
+        taxPercentage: dto.taxPercentage ?? null,
+        tags: dto.tags ?? [],
+        buyersPreferredFrom: dto.buyersPreferredFrom ?? [],
+        manufacturerName: dto.manufacturerName ?? null,
+        manufacturerCountry: dto.manufacturerCountry ?? null,
+        aboutManufacturer: dto.aboutManufacturer ?? null,
+        stockedInCountry: dto.stockedInCountry ?? null,
+        stockedInQuantity: dto.stockedInQuantity ?? null,
+        stockedInType: dto.stockedInType ?? null,
+        estimatedShippingDays: dto.estimatedShippingDays ?? null,
         availabilityStatus: dto.availabilityStatus ?? 'IN_STOCK',
-        adminApprovalStatus: dto.isDraft ? 'PENDING' : 'PENDING', // always PENDING until admin approves
+        adminApprovalStatus: 'PENDING',
         isActive: true,
         ...(dto.categoryIds?.length
           ? {
@@ -72,6 +122,10 @@ export class SellerProductsService {
         categories: { include: { category: { select: { id: true, name: true } } } },
       },
     });
+
+    // Fire-and-forget keyword screening — never block product creation
+    this.screenForProhibitedContent(product.id, product.name, product.description ?? null)
+      .catch((err) => this.logger.warn(`Keyword screen failed for ${product.id}: ${err.message}`));
 
     this.logger.log(`Product created: ${product.id} by seller ${seller.id}`);
     return this.formatProduct(product);
@@ -165,6 +219,10 @@ export class SellerProductsService {
       }
     }
 
+    if (dto.images !== undefined && dto.images.length > 8) {
+      throw new BadRequestException('A product may have at most 8 images.');
+    }
+
     // Handle category updates
     if (dto.categoryIds !== undefined) {
       await this.prisma.productCategory.deleteMany({ where: { productId } });
@@ -181,6 +239,18 @@ export class SellerProductsService {
         ...(dto.images !== undefined && { images: dto.images as any }),
         ...(dto.certifications !== undefined && { certifications: dto.certifications as any }),
         ...(dto.countryOfOrigin !== undefined && { countryOfOrigin: dto.countryOfOrigin }),
+        ...(dto.partModelNumber !== undefined && { partModelNumber: dto.partModelNumber }),
+        ...(dto.minimumOrderQuantity !== undefined && { minimumOrderQuantity: dto.minimumOrderQuantity }),
+        ...(dto.taxPercentage !== undefined && { taxPercentage: dto.taxPercentage }),
+        ...(dto.tags !== undefined && { tags: dto.tags }),
+        ...(dto.buyersPreferredFrom !== undefined && { buyersPreferredFrom: dto.buyersPreferredFrom }),
+        ...(dto.manufacturerName !== undefined && { manufacturerName: dto.manufacturerName }),
+        ...(dto.manufacturerCountry !== undefined && { manufacturerCountry: dto.manufacturerCountry }),
+        ...(dto.aboutManufacturer !== undefined && { aboutManufacturer: dto.aboutManufacturer }),
+        ...(dto.stockedInCountry !== undefined && { stockedInCountry: dto.stockedInCountry }),
+        ...(dto.stockedInQuantity !== undefined && { stockedInQuantity: dto.stockedInQuantity }),
+        ...(dto.stockedInType !== undefined && { stockedInType: dto.stockedInType }),
+        ...(dto.estimatedShippingDays !== undefined && { estimatedShippingDays: dto.estimatedShippingDays }),
         ...(dto.availabilityStatus !== undefined && { availabilityStatus: dto.availabilityStatus }),
         ...(resetApproval && { adminApprovalStatus: 'PENDING' }),
         ...(dto.categoryIds?.length
@@ -262,6 +332,18 @@ export class SellerProductsService {
       images: product.images ?? [],
       certifications: product.certifications ?? [],
       countryOfOrigin: product.countryOfOrigin,
+      partModelNumber: product.partModelNumber,
+      minimumOrderQuantity: product.minimumOrderQuantity ? Number(product.minimumOrderQuantity) : null,
+      taxPercentage: product.taxPercentage ? Number(product.taxPercentage) : null,
+      tags: product.tags ?? [],
+      buyersPreferredFrom: product.buyersPreferredFrom ?? [],
+      manufacturerName: product.manufacturerName,
+      manufacturerCountry: product.manufacturerCountry,
+      aboutManufacturer: product.aboutManufacturer,
+      stockedInCountry: product.stockedInCountry,
+      stockedInQuantity: product.stockedInQuantity ? Number(product.stockedInQuantity) : null,
+      stockedInType: product.stockedInType,
+      estimatedShippingDays: product.estimatedShippingDays,
       availabilityStatus: product.availabilityStatus,
       isActive: product.isActive,
       adminApprovalStatus: product.adminApprovalStatus,
@@ -277,10 +359,12 @@ export class SellerProductsService {
 
   /**
    * Parse a CSV buffer and bulk-insert products for the seller.
-   * Expected CSV columns (header row required):
-   *   name, description, hsnCode, unit, retailPrice, wholesaleMinQty, wholesalePrice, bulkMinQty, bulkPrice
-   * All price columns are optional — at least one pricing tier must be set.
-   * Returns a summary: { imported, failed, errors }.
+   * Required columns: name, retailPrice
+   * Optional columns: description, hsnCode, unit, wholesalePrice, wholesaleMinQty, bulkPrice, bulkMinQty,
+   *   partModelNumber, minimumOrderQuantity, taxPercentage, tags (pipe-separated), buyersPreferredFrom (pipe-separated),
+   *   manufacturerName, manufacturerCountry, aboutManufacturer, stockedInCountry, stockedInQuantity,
+   *   stockedInType, estimatedShippingDays
+   * Multi-value fields (tags, buyersPreferredFrom) use | as delimiter within the cell.
    */
   async importCsv(userId: string, csvBuffer: Buffer) {
     const seller = await this.getVerifiedSeller(userId);
@@ -289,7 +373,7 @@ export class SellerProductsService {
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length < 2) throw new BadRequestException('CSV must have a header row and at least one product row');
 
-    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/\s+/g, ''));
     const requiredCols = ['name', 'retailprice'];
     for (const col of requiredCols) {
       if (!headers.includes(col)) {
@@ -300,6 +384,11 @@ export class SellerProductsService {
     const col = (row: string[], name: string) =>
       row[headers.indexOf(name)]?.trim() ?? '';
 
+    const pipes = (row: string[], name: string): string[] => {
+      const val = col(row, name);
+      return val ? val.split('|').map((v) => v.trim()).filter(Boolean) : [];
+    };
+
     let imported = 0;
     const errors: string[] = [];
 
@@ -308,21 +397,21 @@ export class SellerProductsService {
       const name = col(row, 'name');
       if (!name) { errors.push(`Row ${i + 1}: missing name`); continue; }
 
-      const retailPrice  = parseFloat(col(row, 'retailprice') || '0');
+      const retailPrice    = parseFloat(col(row, 'retailprice') || '0');
       const wholesalePrice = parseFloat(col(row, 'wholesaleprice') || '0');
-      const bulkPrice    = parseFloat(col(row, 'bulkprice') || '0');
+      const bulkPrice      = parseFloat(col(row, 'bulkprice') || '0');
 
       const pricing: any = {};
       if (retailPrice > 0) {
-        pricing.retail = { enabled: true, pricePerUnit: retailPrice, moq: 1 };
+        pricing.retail = { enabled: true, price: retailPrice, moq: 1 };
       }
       if (wholesalePrice > 0) {
         const minQty = parseInt(col(row, 'wholesaleminqty') || '10', 10);
-        pricing.wholesale = { enabled: true, pricePerUnit: wholesalePrice, moq: minQty };
+        pricing.wholesale = { enabled: true, price: wholesalePrice, moq: minQty };
       }
       if (bulkPrice > 0) {
         const minQty = parseInt(col(row, 'bulkminqty') || '100', 10);
-        pricing.bulk = { enabled: true, pricePerUnit: bulkPrice, moq: minQty };
+        pricing.bulk = { enabled: true, price: bulkPrice, moq: minQty };
       }
 
       if (!pricing.retail && !pricing.wholesale && !pricing.bulk) {
@@ -330,18 +419,35 @@ export class SellerProductsService {
         continue;
       }
 
+      const moqRaw      = col(row, 'minimumorderquantity');
+      const taxRaw      = col(row, 'taxpercentage');
+      const stockQtyRaw = col(row, 'stockedinquantity');
+      const shipRaw     = col(row, 'estimatedshippingdays');
+
       try {
         await this.prisma.product.create({
           data: {
-            sellerId:         seller.id,
+            sellerId:             seller.id,
             name,
-            description:      col(row, 'description') || null,
-            hsnCode:          col(row, 'hsncode') || null,
-            unit:             col(row, 'unit') || 'piece',
-            multiTierPricing: pricing,
-            images:           [],
-            isActive:         true,
-            adminApprovalStatus: 'PENDING',
+            description:          col(row, 'description') || null,
+            hsnCode:              col(row, 'hsncode') || null,
+            unit:                 col(row, 'unit') || 'PIECE',
+            multiTierPricing:     pricing,
+            images:               [],
+            partModelNumber:      col(row, 'partmodelnumber') || null,
+            minimumOrderQuantity: moqRaw ? parseFloat(moqRaw) : null,
+            taxPercentage:        taxRaw ? parseFloat(taxRaw) : null,
+            tags:                 pipes(row, 'tags'),
+            buyersPreferredFrom:  pipes(row, 'buyerspreferredfrom'),
+            manufacturerName:     col(row, 'manufacturername') || null,
+            manufacturerCountry:  col(row, 'manufacturercountry') || null,
+            aboutManufacturer:    col(row, 'aboutmanufacturer') || null,
+            stockedInCountry:     col(row, 'stockedincountry') || null,
+            stockedInQuantity:    stockQtyRaw ? parseFloat(stockQtyRaw) : null,
+            stockedInType:        col(row, 'stockedintype') || null,
+            estimatedShippingDays: shipRaw ? parseInt(shipRaw, 10) : null,
+            isActive:             true,
+            adminApprovalStatus:  'PENDING',
           },
         });
         imported++;

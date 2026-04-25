@@ -17,6 +17,18 @@ interface Product {
   hsnCode?: string;
   unit?: string;
   countryOfOrigin?: string;
+  partModelNumber?: string;
+  minimumOrderQuantity?: number;
+  taxPercentage?: number;
+  tags: string[];
+  buyersPreferredFrom: string[];
+  manufacturerName?: string;
+  manufacturerCountry?: string;
+  aboutManufacturer?: string;
+  stockedInCountry?: string;
+  stockedInQuantity?: number;
+  stockedInType?: string;
+  estimatedShippingDays?: number;
   availabilityStatus: 'IN_STOCK' | 'OUT_OF_STOCK';
   multiTierPricing: any;
   images: string[];
@@ -72,6 +84,18 @@ export default function EditProductPage() {
         multiTierPricing: data.multiTierPricing,
         images: data.images.map((img: any) => img.fileUrl),
         isDraft: data.isDraft,
+        partModelNumber: data.partModelNumber || undefined,
+        minimumOrderQuantity: data.minimumOrderQuantity || undefined,
+        taxPercentage: data.taxPercentage || undefined,
+        tags: data.tags ?? [],
+        buyersPreferredFrom: data.buyersPreferredFrom ?? [],
+        manufacturerName: data.manufacturerName || undefined,
+        manufacturerCountry: data.manufacturerCountry || undefined,
+        aboutManufacturer: data.aboutManufacturer || undefined,
+        stockedInCountry: data.stockedInCountry || undefined,
+        stockedInQuantity: data.stockedInQuantity || undefined,
+        stockedInType: data.stockedInType || undefined,
+        estimatedShippingDays: data.estimatedShippingDays || undefined,
       };
 
       await axios.patch(`${API_URL}/api/seller/products/${id}`, payload, {
@@ -145,6 +169,18 @@ export default function EditProductPage() {
     certifications: product.certifications ?? [],
     multiTierPricing: normalizedPricing,
     images: defaultImages,
+    partModelNumber: product.partModelNumber,
+    minimumOrderQuantity: product.minimumOrderQuantity,
+    taxPercentage: product.taxPercentage,
+    tags: product.tags ?? [],
+    buyersPreferredFrom: product.buyersPreferredFrom ?? [],
+    manufacturerName: product.manufacturerName,
+    manufacturerCountry: product.manufacturerCountry,
+    aboutManufacturer: product.aboutManufacturer,
+    stockedInCountry: product.stockedInCountry,
+    stockedInQuantity: product.stockedInQuantity,
+    stockedInType: product.stockedInType,
+    estimatedShippingDays: product.estimatedShippingDays,
   };
 
   const wasApproved = product.adminApprovalStatus === 'APPROVED';

@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../database/database.service';
 import { RedisService } from '../../services/redis/redis.service';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
-import { BuyLeadsQueryDto, RevealedLeadsQueryDto } from './dto/buy-leads.dto';
+import { BuyLeadFilterDto, RevealedLeadsQueryDto } from './dto/buy-leads.dto';
 
 @Injectable()
 export class BuyLeadsService {
@@ -38,6 +38,12 @@ export class BuyLeadsService {
   }
 
   private maskLead(lead: any) {
+    const expiryDate = lead.expiryDate ?? lead.expiresAt ?? null;
+    const now = Date.now();
+    const expiringIn3Days = expiryDate
+      ? new Date(expiryDate).getTime() - now < 3 * 24 * 60 * 60 * 1000 && new Date(expiryDate).getTime() > now
+      : false;
+
     return {
       id: lead.id,
       productName: lead.productName,
@@ -48,8 +54,15 @@ export class BuyLeadsService {
       repeatOption: lead.repeatOption,
       isOpen: lead.isOpen,
       postedAt: lead.createdAt,
-      expiryDate: lead.expiryDate ?? lead.expiresAt,
-      // Buyer details are masked
+      expiryDate,
+      requirementType: lead.requirementType ?? null,
+      currency: lead.currency ?? 'INR',
+      targetPriceMin: lead.targetPriceMin ? parseFloat(String(lead.targetPriceMin)) : null,
+      targetPriceMax: lead.targetPriceMax ? parseFloat(String(lead.targetPriceMax)) : null,
+      deliveryState: lead.deliveryState ?? null,
+      categoryId: lead.categoryId ?? null,
+      isGstVerified: !!(lead.buyer?.gstinNumber),
+      isExpiringSoon: expiringIn3Days,
       buyerMasked: 'Verified Buyer',
     };
   }
@@ -82,7 +95,10 @@ export class BuyLeadsService {
   private async getVerifiedSeller(userId: string) {
     const seller = await this.prisma.seller.findUnique({
       where: { userId },
-      include: { leadCreditWallet: true },
+      include: {
+        leadCreditWallet: true,
+        user: { select: { lastLoginAt: true } },
+      },
     });
     if (!seller) {
       throw new ForbiddenException('Seller profile not found. Complete KYC to access buy leads.');
@@ -90,47 +106,133 @@ export class BuyLeadsService {
     return seller;
   }
 
-  // ─── List open buy leads (masked) ────────────────────────────────────────
+  // ─── List open buy leads (masked) with full filter support ───────────────
 
-  async getLeads(query: BuyLeadsQueryDto, userId: string) {
-    // Ensure user has a seller profile
-    await this.getVerifiedSeller(userId);
+  async getLeads(query: BuyLeadFilterDto, userId: string) {
+    const seller = await this.getVerifiedSeller(userId);
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const ck = this.cacheKey('buy-leads:list', query);
+    // Cache key includes userId so reveal-status filters are seller-scoped
+    const ck = this.cacheKey('buy-leads:list', { ...query, userId });
     const cached = await this.redis.get<any>(ck);
     if (cached) return cached;
 
     const where: any = { isOpen: true, deletedAt: null };
 
+    // ── 1. Product name search ──────────────────────────────────────────────
     if (query.productName) {
       where.productName = { contains: query.productName, mode: 'insensitive' };
     }
 
+    // ── 2. Country filter ───────────────────────────────────────────────────
     if (query.country) {
-      where.expectedCountry = { contains: query.country, mode: 'insensitive' };
+      if (query.country === 'domestic') {
+        where.expectedCountry = { contains: 'India', mode: 'insensitive' };
+      } else if (query.country === 'international') {
+        where.NOT = { expectedCountry: { contains: 'India', mode: 'insensitive' } };
+      } else {
+        where.expectedCountry = { contains: query.country, mode: 'insensitive' };
+      }
     }
 
-    if (query.postedAfter && query.postedAfter !== 'all') {
+    // ── 3. State/region filter (domestic leads only) ────────────────────────
+    if (query.deliveryState?.length) {
+      where.deliveryState = { in: query.deliveryState };
+    }
+
+    // ── 4. Time period filter ───────────────────────────────────────────────
+    let periodCutoff: Date | null = null;
+    if (query.period && query.period !== 'all') {
       const now = new Date();
-      const cutoff = new Date(now);
-      if (query.postedAfter === 'today') cutoff.setHours(0, 0, 0, 0);
-      else if (query.postedAfter === 'last3days') cutoff.setDate(cutoff.getDate() - 3);
-      else if (query.postedAfter === 'lastweek') cutoff.setDate(cutoff.getDate() - 7);
-      where.createdAt = { gte: cutoff };
+      periodCutoff = new Date(now);
+      if (query.period === 'today') periodCutoff.setHours(0, 0, 0, 0);
+      else if (query.period === '7d') periodCutoff.setDate(periodCutoff.getDate() - 7);
+      else if (query.period === '30d') periodCutoff.setDate(periodCutoff.getDate() - 30);
     }
 
-    const [total, leads] = await Promise.all([
+    // ── 5. Requirement type ─────────────────────────────────────────────────
+    if (query.requirementType) {
+      where.requirementType = query.requirementType;
+    }
+
+    // ── 6. Quantity range ───────────────────────────────────────────────────
+    if (query.qtyMin !== undefined || query.qtyMax !== undefined) {
+      where.quantity = {};
+      if (query.qtyMin !== undefined) where.quantity.gte = query.qtyMin;
+      if (query.qtyMax !== undefined) where.quantity.lte = query.qtyMax;
+    }
+
+    // ── 7. New leads only (since seller's last login) ───────────────────────
+    let newCutoff: Date | null = null;
+    if (query.newOnly) {
+      newCutoff = seller.user?.lastLoginAt ?? null;
+    }
+
+    // Merge period + newOnly cutoffs → use the most-recent (restrictive) one
+    const createdAtCutoff = [periodCutoff, newCutoff]
+      .filter((d): d is Date => d !== null)
+      .reduce<Date | null>((latest, d) => (!latest || d > latest ? d : latest), null);
+    if (createdAtCutoff) {
+      where.createdAt = { gte: createdAtCutoff };
+    }
+
+    // ── 8. Viewed / unviewed (reveal audit log) ─────────────────────────────
+    if (query.revealStatus === 'viewed') {
+      where.contactReveals = { some: { sellerId: seller.id } };
+    } else if (query.revealStatus === 'unviewed') {
+      where.contactReveals = { none: { sellerId: seller.id } };
+    }
+
+    // ── 9. Buyer GST verified ───────────────────────────────────────────────
+    if (query.buyerVerified) {
+      where.buyer = { gstinNumber: { not: null } };
+    }
+
+    // ── 10. Contact channel ─────────────────────────────────────────────────
+    if (query.contactChannel?.length) {
+      where.contactChannel = { in: query.contactChannel.map((c) => c.toUpperCase()) };
+    }
+
+    // ── 11. Category filter ─────────────────────────────────────────────────
+    if (query.categories?.length) {
+      where.categoryId = { in: query.categories };
+    }
+
+    // ── 12. Expiry filter ───────────────────────────────────────────────────
+    if (query.expiry && query.expiry !== 'all') {
+      const future = new Date();
+      if (query.expiry === '3d') future.setDate(future.getDate() + 3);
+      else if (query.expiry === '7d') future.setDate(future.getDate() + 7);
+      where.expiryDate = { not: null, lte: future };
+    }
+
+    // ── Price range filter ──────────────────────────────────────────────────
+    if (query.priceMin !== undefined || query.priceMax !== undefined) {
+      const currency = query.priceCurrency ?? 'INR';
+      where.currency = currency;
+      if (query.priceMin !== undefined) where.targetPriceMin = { gte: query.priceMin };
+      if (query.priceMax !== undefined) where.targetPriceMax = { lte: query.priceMax };
+    }
+
+    // Always compute new-since-last-login count (for badge, regardless of filters)
+    const lastLogin = seller.user?.lastLoginAt;
+    const newSinceLastLoginPromise = lastLogin
+      ? this.prisma.buyLead.count({ where: { isOpen: true, deletedAt: null, createdAt: { gte: lastLogin } } })
+      : Promise.resolve(0);
+
+    const [total, leads, newSinceLastLogin] = await Promise.all([
       this.prisma.buyLead.count({ where }),
       this.prisma.buyLead.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
+        include: { buyer: { select: { gstinNumber: true } } },
       }),
+      newSinceLastLoginPromise,
     ]);
 
     const result = {
@@ -139,10 +241,45 @@ export class BuyLeadsService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      newSinceLastLogin,
     };
 
-    await this.redis.set(ck, result, 300); // 5 min TTL
+    await this.redis.set(ck, result, 300);
     return result;
+  }
+
+  // ─── New leads count since seller's last login ────────────────────────────
+
+  async getNewLeadsCount(userId: string) {
+    const seller = await this.getVerifiedSeller(userId);
+    const lastLogin = seller.user?.lastLoginAt;
+
+    if (!lastLogin) return { count: 0, lastLoginAt: null };
+
+    const count = await this.prisma.buyLead.count({
+      where: { isOpen: true, deletedAt: null, createdAt: { gte: lastLogin } },
+    });
+
+    return { count, lastLoginAt: lastLogin };
+  }
+
+  // ─── Active categories (have ≥ 1 open buy lead) ───────────────────────────
+
+  async getActiveCategories() {
+    const leads = await this.prisma.buyLead.findMany({
+      where: { isOpen: true, deletedAt: null, categoryId: { not: null } },
+      select: { categoryId: true },
+      distinct: ['categoryId'],
+    });
+
+    const categoryIds = leads.map((l) => l.categoryId).filter(Boolean) as string[];
+    if (categoryIds.length === 0) return [];
+
+    return this.prisma.category.findMany({
+      where: { id: { in: categoryIds } },
+      select: { id: true, name: true, parentId: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   // ─── Single lead detail (masked) ─────────────────────────────────────────

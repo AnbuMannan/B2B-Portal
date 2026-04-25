@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../../database/database.service';
+import { IrpClientService } from './irp-client.service';
 
 export interface InvoiceData {
   transactionId: string;
@@ -32,6 +33,15 @@ export interface InvoiceData {
   razorpayPaymentId?: string;
 }
 
+export interface GenerateInvoiceResult {
+  /** Relative path to the PDF/HTML invoice file */
+  invoicePath: string;
+  /** GSTN IRP Invoice Reference Number (null when IRP not configured) */
+  irn?: string;
+  ackNo?: string;
+  irpQrCode?: string;
+}
+
 @Injectable()
 export class GstInvoiceService {
   private readonly logger = new Logger(GstInvoiceService.name);
@@ -47,6 +57,7 @@ export class GstInvoiceService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly irpClient: IrpClientService,
   ) {
     this.platformGstin = this.config.get<string>('PLATFORM_GSTIN') ?? '29AABCU9603R1ZX';
     this.invoiceBaseDir = path.resolve(
@@ -101,19 +112,53 @@ export class GstInvoiceService {
     return { cgst: 0, sgst: 0, igst: gstAmount, gstAmount };
   }
 
-  // ── Generate invoice (sandbox: HTML file; production: GSTN IRP PDF) ──────
+  // ── Generate invoice — IRP when credentials present, PDF mock otherwise ──
 
-  async generateInvoice(data: InvoiceData): Promise<string> {
-    const env = this.config.get<string>('NODE_ENV') ?? 'development';
+  async generateInvoice(data: InvoiceData): Promise<GenerateInvoiceResult> {
+    // Attempt IRP registration whenever credentials are configured (sandbox or prod)
+    if (this.irpClient.isConfigured) {
+      try {
+        const stateCodeMap: Record<string, string> = {
+          'andhra pradesh': '37', 'arunachal pradesh': '12', 'assam': '18',
+          'bihar': '10', 'chhattisgarh': '22', 'goa': '30', 'gujarat': '24',
+          'haryana': '06', 'himachal pradesh': '02', 'jharkhand': '20',
+          'karnataka': '29', 'kerala': '32', 'madhya pradesh': '23',
+          'maharashtra': '27', 'manipur': '14', 'meghalaya': '17',
+          'mizoram': '15', 'nagaland': '13', 'odisha': '21', 'punjab': '03',
+          'rajasthan': '08', 'sikkim': '11', 'tamil nadu': '33',
+          'telangana': '36', 'tripura': '16', 'uttar pradesh': '09',
+          'uttarakhand': '05', 'west bengal': '19', 'delhi': '07',
+        };
+        const pos = stateCodeMap[(data.buyerState ?? '').toLowerCase()] ?? '29';
+        const eInv = await this.irpClient.generateEInvoice({
+          invoiceNumber: data.invoiceNumber,
+          invoiceDate:   data.date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+          supplyType:    data.buyerGstin ? 'B2B' : 'B2C',
+          sellerGstin:   this.platformGstin,
+          buyerGstin:    data.buyerGstin,
+          buyerName:     data.buyerName,
+          buyerState:    data.buyerState ?? '',
+          placeOfSupply: pos,
+          baseAmount:    data.baseAmount,
+          cgst:          data.cgst,
+          sgst:          data.sgst,
+          igst:          data.igst,
+          totalAmount:   data.totalAmount,
+          packName:      data.packName,
+          credits:       data.credits,
+          sacCode:       '998313',
+        });
 
-    if (env === 'production') {
-      // TODO: Integrate with GSTN Invoice Registration Portal (IRP) API
-      // const eInvoice = await this.gstnIrpClient.generateEInvoice(data);
-      // return this.savePdf(data, eInvoice.signedQrCode);
-      this.logger.warn('Production GST IRP not configured — falling back to mock invoice');
+        // Generate PDF with QR embedded
+        const invoicePath = await this.generatePdf({ ...data, irpQrCode: eInv.signedQrCode } as any);
+        return { invoicePath, irn: eInv.irn, ackNo: eInv.ackNo, irpQrCode: eInv.signedQrCode };
+      } catch (err: any) {
+        this.logger.error(`IRP e-invoice failed, falling back to local PDF: ${err.message}`);
+      }
     }
 
-    return this.generateMockInvoice(data);
+    const invoicePath = await this.generateMockInvoice(data);
+    return { invoicePath };
   }
 
   // ── Serve invoice file ────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage, diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { ApiConsumes, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -32,6 +32,35 @@ const ALLOWED_LOGO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 if (!fs.existsSync(KYC_UPLOAD_DIR))   fs.mkdirSync(KYC_UPLOAD_DIR,   { recursive: true });
 if (!fs.existsSync(LOGO_UPLOAD_DIR))  fs.mkdirSync(LOGO_UPLOAD_DIR,  { recursive: true });
 
+/**
+ * Sniff actual file type from magic bytes — prevents extension/MIME spoofing.
+ * Returns null if the buffer is too small or no signature matches.
+ */
+function detectMimeFromBuffer(buf: Buffer): string | null {
+  if (buf.length < 12) return null;
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  // PNG: 89 50 4E 47
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  // WebP: RIFF????WEBP
+  if (
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) return 'image/webp';
+  // PDF: %PDF
+  if (buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) return 'application/pdf';
+  return null;
+}
+
+function assertMagicBytes(buf: Buffer, allowed: string[], label: string) {
+  const detected = detectMimeFromBuffer(buf);
+  if (!detected || !allowed.includes(detected)) {
+    throw new BadRequestException(
+      `${label}: file content does not match a permitted type (${allowed.join(', ')})`,
+    );
+  }
+}
+
 @ApiTags('upload')
 @Controller('upload')
 export class UploadController {
@@ -45,13 +74,7 @@ export class UploadController {
   @Roles('SELLER')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: KYC_UPLOAD_DIR,
-        filename: (_req, file, cb) => {
-          const ext = path.extname(file.originalname).toLowerCase();
-          cb(null, `kyc-${uuidv4()}${ext}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: MAX_FILE_SIZE_BYTES },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_KYC_MIME_TYPES.includes(file.mimetype)) {
@@ -69,20 +92,19 @@ export class UploadController {
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<ApiResponseDto<any>> {
-    if (!file) {
-      throw new BadRequestException('No file provided');
-    }
+    if (!file) throw new BadRequestException('No file provided');
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      fs.unlink(file.path, () => {});
-      throw new BadRequestException('File size exceeds 5 MB limit');
-    }
+    assertMagicBytes(file.buffer, ALLOWED_KYC_MIME_TYPES, 'KYC document');
 
-    this.logger.log(`KYC document uploaded by ${user.id}: ${file.filename} (${file.size} bytes)`);
+    const ext = path.extname(file.originalname).toLowerCase() || '.bin';
+    const filename = `kyc-${uuidv4()}${ext}`;
+    const destPath = path.join(KYC_UPLOAD_DIR, filename);
+    fs.writeFileSync(destPath, file.buffer);
 
-    const fileUrl = `/kyc-docs/${file.filename}`;
+    this.logger.log(`KYC document uploaded by ${user.id}: ${filename} (${file.size} bytes)`);
+
     return ApiResponseDto.success('File uploaded successfully', {
-      fileUrl,
+      fileUrl: `/kyc-docs/${filename}`,
       fileName: file.originalname,
       fileSize: file.size,
       mimeType: file.mimetype,
@@ -95,7 +117,7 @@ export class UploadController {
   @Roles('SELLER')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: memoryStorage(), // buffer for Sharp processing
+      storage: memoryStorage(),
       limits: { fileSize: MAX_FILE_SIZE_BYTES },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_PRODUCT_MIME_TYPES.includes(file.mimetype)) {
@@ -115,9 +137,9 @@ export class UploadController {
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<ApiResponseDto<any>> {
-    if (!file) {
-      throw new BadRequestException('No file provided');
-    }
+    if (!file) throw new BadRequestException('No file provided');
+
+    assertMagicBytes(file.buffer, ALLOWED_PRODUCT_MIME_TYPES, 'Product image');
 
     const sellerId = user.id;
     const uuid = uuidv4();
@@ -134,13 +156,11 @@ export class UploadController {
     const thumbPath = path.join(thumbDir, thumbFilename);
 
     try {
-      // Full image: 800×800 max, WebP 85% quality, maintain aspect ratio
       await (sharp as any)(file.buffer)
         .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
         .webp({ quality: 85 })
         .toFile(fullPath);
 
-      // Thumbnail: 200×200, WebP 80% quality
       await (sharp as any)(file.buffer)
         .resize(200, 200, { fit: 'cover' })
         .webp({ quality: 80 })
@@ -152,12 +172,9 @@ export class UploadController {
 
     this.logger.log(`Product image uploaded by seller ${sellerId}: ${uuid}.webp`);
 
-    const fileUrl = `/products/${sellerId}/${fullFilename}`;
-    const thumbUrl = `/products/${sellerId}/thumb/${thumbFilename}`;
-
     return ApiResponseDto.success('Image uploaded successfully', {
-      fileUrl,
-      thumbUrl,
+      fileUrl: `/products/${sellerId}/${fullFilename}`,
+      thumbUrl: `/products/${sellerId}/thumb/${thumbFilename}`,
       fileName: file.originalname,
       mimeType: 'image/webp',
     });
@@ -170,7 +187,7 @@ export class UploadController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 2 * 1024 * 1024 },
+      limits: { fileSize: LOGO_MAX_BYTES },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_LOGO_MIME_TYPES.includes(file.mimetype)) {
           cb(null, true);
@@ -191,12 +208,8 @@ export class UploadController {
   ): Promise<ApiResponseDto<any>> {
     if (!file) throw new BadRequestException('No file provided');
 
-    if (file.size > LOGO_MAX_BYTES) {
-      throw new BadRequestException('Logo must be under 2 MB');
-    }
+    assertMagicBytes(file.buffer, ALLOWED_LOGO_MIME_TYPES, 'Logo');
 
-    const sellerId = user.id; // NOTE: user.id on a SELLER token is the Seller.id (set in jwt.strategy)
-    // Actually user.id from JWT is the userId — we let the service resolve sellerId
     const logoPath = path.join(LOGO_UPLOAD_DIR, `${user.id}.webp`);
 
     try {

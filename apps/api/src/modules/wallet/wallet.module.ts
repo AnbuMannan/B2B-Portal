@@ -4,6 +4,7 @@ import { WalletController } from './wallet.controller';
 import { WalletService } from './wallet.service';
 import { RazorpayService } from '../../services/payment/razorpay.service';
 import { GstInvoiceService } from '../../services/gst/gst-invoice.service';
+import { IrpClientService } from '../../services/gst/irp-client.service';
 import { DatabaseModule } from '../../database/database.module';
 
 @Module({
@@ -15,7 +16,7 @@ import { DatabaseModule } from '../../database/database.module';
     ),
   ],
   controllers: [WalletController],
-  providers: [WalletService, RazorpayService, GstInvoiceService],
+  providers: [WalletService, RazorpayService, GstInvoiceService, IrpClientService],
   exports: [WalletService],
 })
 export class WalletModule {}

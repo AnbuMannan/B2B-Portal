@@ -18,6 +18,8 @@ import { ValidationExceptionFilter } from './common/filters/validation-exception
 import { DatabaseExceptionFilter } from './common/filters/database-exception.filter';
 import { JwtExceptionFilter } from './common/filters/jwt-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { PerformanceInterceptor } from './common/interceptors/performance.interceptor';
+import { ResponseNormalizerInterceptor } from './common/interceptors/response-normalizer.interceptor';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { CacheInterceptor } from './common/interceptors/cache.interceptor';
 import { RoleBasedGuard } from './common/guards/role-based.guard';
@@ -36,6 +38,10 @@ import { WalletModule } from './modules/wallet/wallet.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { FeatureFlagInterceptor } from './common/interceptors/feature-flag.interceptor';
 import { SeoModule } from './modules/seo/seo.module';
+import { BuyerModule } from './modules/buyer/buyer.module';
+import { ComplaintsModule } from './modules/complaints/complaints.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { ComplianceModule } from './modules/compliance/compliance.module';
 
 @Module({
   imports: [
@@ -69,6 +75,10 @@ import { SeoModule } from './modules/seo/seo.module';
     AuditModule,
     FeatureFlagsModule,
     SeoModule,
+    BuyerModule,
+    ComplaintsModule,
+    AdminModule,
+    ComplianceModule,
   ],
   controllers: [],
   providers: [
@@ -88,6 +98,14 @@ import { SeoModule } from './modules/seo/seo.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PerformanceInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ResponseNormalizerInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
@@ -124,6 +142,7 @@ export class AppModule implements NestModule {
     consumer.apply(RateLimitMiddleware).forRoutes(
       'api/auth/login',
       'api/auth/register',
+      'api/admin/auth/login',
       'api/auth/forgot-password',
       'api/auth/reset-password',
       'api/seller/wallet',

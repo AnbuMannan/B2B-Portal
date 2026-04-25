@@ -2,13 +2,13 @@ import {
   Controller,
   Get,
   Patch,
+  Param,
   Body,
   Query,
   HttpCode,
   HttpStatus,
   ParseIntPipe,
   DefaultValuePipe,
-  Optional,
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SellerDashboardService } from './seller-dashboard.service';
@@ -61,5 +61,31 @@ export class SellerDashboardController {
       body.notificationIds,
     );
     return ApiResponseDto.success('Notifications marked as read', result);
+  }
+
+  @Get('orders')
+  @Roles('SELLER')
+  @ApiOperation({ summary: 'Get paginated seller orders with search/filter' })
+  async getOrders(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('status') status?: string,
+  ): Promise<ApiResponseDto<any>> {
+    const data = await this.dashboardService.getOrders(user.id, page, limit, status);
+    return ApiResponseDto.success('Orders fetched', data);
+  }
+
+  @Patch('orders/:id/status')
+  @HttpCode(HttpStatus.OK)
+  @Roles('SELLER')
+  @ApiOperation({ summary: 'Update order status (ACCEPTED, REJECTED, FULFILLED)' })
+  async updateOrderStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') orderId: string,
+    @Body() body: { status: string },
+  ): Promise<ApiResponseDto<any>> {
+    const data = await this.dashboardService.updateOrderStatus(user.id, orderId, body.status);
+    return ApiResponseDto.success('Order status updated', data);
   }
 }

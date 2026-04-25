@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import {
   MessageCircle, Mail, Send, Globe, CheckCircle2,
-  RefreshCw, Bookmark, BookmarkCheck, Sparkles,
+  RefreshCw, Bookmark, BookmarkCheck, Sparkles, Eye,
+  ShieldCheck, Clock,
 } from 'lucide-react';
 import type { BuyLead } from '../BuyLeadsClient';
 
@@ -40,10 +41,6 @@ function flag(country: string) {
   return COUNTRY_FLAG[country] ?? '🌍';
 }
 
-/**
- * Real-time countdown string updated every minute.
- * Returns a string like "1d 4h" or "3h 22m" or "Expired".
- */
 function useCountdown(expiryDate: string | null): { label: string; urgent: boolean } {
   const compute = () => {
     if (!expiryDate) return { label: '', urgent: false };
@@ -53,14 +50,13 @@ function useCountdown(expiryDate: string | null): { label: string; urgent: boole
     const days = Math.floor(totalMinutes / 1440);
     const hours = Math.floor((totalMinutes % 1440) / 60);
     const mins = totalMinutes % 60;
-    const urgent = ms < 2 * 24 * 60 * 60 * 1000; // < 2 days
+    const urgent = ms < 3 * 24 * 60 * 60 * 1000;
     if (days > 0) return { label: `${days}d ${hours}h left`, urgent };
     if (hours > 0) return { label: `${hours}h ${mins}m left`, urgent };
     return { label: `${mins}m left`, urgent: true };
   };
 
   const [state, setState] = useState(compute);
-
   useEffect(() => {
     if (!expiryDate) return;
     const id = setInterval(() => setState(compute()), 60_000);
@@ -74,6 +70,9 @@ function useCountdown(expiryDate: string | null): { label: string; urgent: boole
 export function LeadCard({ lead, isRevealed, isMatched, isSaved, onReveal, onToggleSave }: LeadCardProps) {
   const { label: countdownLabel, urgent } = useCountdown(lead.expiryDate);
   const postedAgo = formatDistanceToNow(new Date(lead.postedAt), { addSuffix: true });
+
+  const showPrice = lead.targetPriceMin != null || lead.targetPriceMax != null;
+  const currencySymbol = lead.currency === 'USD' ? '$' : '₹';
 
   return (
     <div
@@ -96,15 +95,40 @@ export function LeadCard({ lead, isRevealed, isMatched, isSaved, onReveal, onTog
       )}
 
       <div>
-        {/* Matched badge */}
-        {isMatched && (
-          <div className="mb-2 flex items-center gap-1 text-xs font-medium text-primary">
-            <Sparkles className="h-3.5 w-3.5" />
-            Matches your products
-          </div>
-        )}
+        {/* Top badge row */}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {isMatched && (
+            <span className="flex items-center gap-1 text-xs font-medium text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+              Matched
+            </span>
+          )}
+          {lead.isGstVerified && (
+            <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              <ShieldCheck className="h-3 w-3" />
+              GST Verified
+            </span>
+          )}
+          {lead.isExpiringSoon && (
+            <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
+              <Clock className="h-3 w-3" />
+              Expiring Soon
+            </span>
+          )}
+          {isRevealed && (
+            <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+              <Eye className="h-3 w-3" />
+              Revealed
+            </span>
+          )}
+          {lead.requirementType && (
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+              {lead.requirementType.charAt(0) + lead.requirementType.slice(1).toLowerCase()}
+            </span>
+          )}
+        </div>
 
-        {/* Title row */}
+        {/* Title + repeat badge */}
         <div className="flex items-start justify-between gap-2 pr-6">
           <h3 className="text-base font-semibold text-gray-900 leading-tight">
             {lead.productName}
@@ -122,7 +146,19 @@ export function LeadCard({ lead, isRevealed, isMatched, isSaved, onReveal, onTog
           <p className="mt-1 text-sm text-gray-600">
             Qty:{' '}
             <span className="font-medium">
-              {lead.quantity != null ? lead.quantity : '—'} {lead.unit ?? ''}
+              {lead.quantity != null ? lead.quantity.toLocaleString('en-IN') : '—'} {lead.unit ?? ''}
+            </span>
+          </p>
+        )}
+
+        {/* Target price */}
+        {showPrice && (
+          <p className="mt-0.5 text-sm text-gray-600">
+            Target:{' '}
+            <span className="font-medium text-gray-800">
+              {lead.targetPriceMin != null ? `${currencySymbol}${lead.targetPriceMin.toLocaleString('en-IN')}` : ''}
+              {lead.targetPriceMin != null && lead.targetPriceMax != null ? ' – ' : ''}
+              {lead.targetPriceMax != null ? `${currencySymbol}${lead.targetPriceMax.toLocaleString('en-IN')}` : ''}
             </span>
           </p>
         )}
@@ -137,6 +173,9 @@ export function LeadCard({ lead, isRevealed, isMatched, isSaved, onReveal, onTog
             {CHANNEL_ICON[lead.contactChannel]}
             {CHANNEL_LABEL[lead.contactChannel]}
           </span>
+          {lead.deliveryState && (
+            <span className="text-gray-400">📍 {lead.deliveryState}</span>
+          )}
           <span>Posted {postedAgo}</span>
         </div>
 
@@ -156,10 +195,7 @@ export function LeadCard({ lead, isRevealed, isMatched, isSaved, onReveal, onTog
               <CheckCircle2 className="h-4 w-4" />
               Revealed
             </span>
-            <button
-              onClick={onReveal}
-              className="text-sm font-medium text-primary hover:underline"
-            >
+            <button onClick={onReveal} className="text-sm font-medium text-primary hover:underline">
               View Contact
             </button>
           </div>

@@ -3,10 +3,12 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsInt,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -106,6 +108,73 @@ export class CreateSellerProductDto {
   @IsOptional()
   categoryIds?: string[];
 
+  @ApiProperty({ required: false, description: 'Part or model number (letters, numbers, hyphens, slashes)' })
+  @IsString()
+  @IsOptional()
+  partModelNumber?: string;
+
+  @ApiProperty({ required: false, description: 'Global minimum order quantity override' })
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  minimumOrderQuantity?: number;
+
+  @ApiProperty({ required: false, description: 'GST/tax rate percentage (e.g. 18 for 18%)' })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  taxPercentage?: number;
+
+  @ApiProperty({ type: [String], required: false, description: 'Search/meta tags' })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  tags?: string[];
+
+  @ApiProperty({ type: [String], required: false, description: 'Countries this product can be supplied to' })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  buyersPreferredFrom?: string[];
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  manufacturerName?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  manufacturerCountry?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  aboutManufacturer?: string;
+
+  @ApiProperty({ required: false, description: 'Primary country where stock is held' })
+  @IsString()
+  @IsOptional()
+  stockedInCountry?: string;
+
+  @ApiProperty({ required: false, description: 'Available stock quantity' })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  stockedInQuantity?: number;
+
+  @ApiProperty({ required: false, description: 'Packaging unit type e.g. Box, Strip, Unit, Bottle' })
+  @IsString()
+  @IsOptional()
+  stockedInType?: string;
+
+  @ApiProperty({ required: false, description: 'Maximum estimated shipping days' })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  estimatedShippingDays?: number;
+
   @ApiProperty({ required: false, description: 'If true, saves as draft (no review submission)' })
   @IsBoolean()
   @IsOptional()
@@ -167,6 +236,73 @@ export class UpdateSellerProductDto {
   @IsString({ each: true })
   @IsOptional()
   categoryIds?: string[];
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  partModelNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  minimumOrderQuantity?: number;
+
+  @ApiProperty({ required: false })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  taxPercentage?: number;
+
+  @ApiProperty({ type: [String], required: false })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  tags?: string[];
+
+  @ApiProperty({ type: [String], required: false })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  buyersPreferredFrom?: string[];
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  manufacturerName?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  manufacturerCountry?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  aboutManufacturer?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  stockedInCountry?: string;
+
+  @ApiProperty({ required: false })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  stockedInQuantity?: number;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  stockedInType?: string;
+
+  @ApiProperty({ required: false })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  estimatedShippingDays?: number;
 
   @ApiProperty({ required: false })
   @IsBoolean()

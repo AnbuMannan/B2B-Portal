@@ -2,6 +2,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/database.service';
 import { RedisService } from '../../services/redis/redis.service';
@@ -262,6 +264,74 @@ export class SellerDashboardService {
       expiryDate: l.expiryDate,
       isMatched: categoryIds.length > 0,
     }));
+  }
+
+  async getOrders(userId: string, page: number, limit: number, status?: string) {
+    const seller = await this.prisma.seller.findFirst({ where: { userId } });
+    if (!seller) throw new NotFoundException('Seller profile not found');
+
+    const skip = (page - 1) * limit;
+    const where: any = { sellerId: seller.id, deletedAt: null };
+    if (status) where.status = status;
+
+    const [items, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          paymentStatus: true,
+          finalPrice: true,
+          quotedPrice: true,
+          negotiatedPrice: true,
+          createdAt: true,
+          updatedAt: true,
+          product: { select: { id: true, name: true } },
+          buyer: { select: { id: true, user: { select: { email: true, phoneNumber: true } } } },
+        },
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return {
+      items: items.map((o: any) => ({
+        ...o,
+        finalPrice: o.finalPrice ? Number(o.finalPrice) : null,
+        quotedPrice: o.quotedPrice ? Number(o.quotedPrice) : null,
+        buyerMasked: this.maskEmail(o.buyer?.user?.email ?? ''),
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async updateOrderStatus(userId: string, orderId: string, newStatus: string) {
+    const ALLOWED = ['ACCEPTED', 'REJECTED', 'FULFILLED'];
+    if (!ALLOWED.includes(newStatus)) {
+      throw new BadRequestException(`Status must be one of: ${ALLOWED.join(', ')}`);
+    }
+
+    const seller = await this.prisma.seller.findFirst({ where: { userId } });
+    if (!seller) throw new NotFoundException('Seller profile not found');
+
+    const order = await this.prisma.order.findFirst({ where: { id: orderId, sellerId: seller.id, deletedAt: null } });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (order.status === 'FULFILLED' || order.status === 'CANCELLED') {
+      throw new BadRequestException('Cannot update a completed or cancelled order');
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: newStatus as any },
+      select: { id: true, status: true, updatedAt: true },
+    });
+
+    return updated;
   }
 
   private maskEmail(email: string): string {

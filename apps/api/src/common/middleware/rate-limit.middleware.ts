@@ -19,6 +19,7 @@ export class RateLimitMiddleware implements NestMiddleware {
   // Rate limit rules by endpoint
   private readonly rules: RateLimitConfig = {
     '/api/auth/login': { maxRequests: 5, windowSeconds: 900 }, // 5/15 min
+    '/api/admin/auth/login': { maxRequests: 5, windowSeconds: 900 }, // 5/15 min — stricter admin
     '/api/auth/register': { maxRequests: 5, windowSeconds: 900 }, // 5/15 min
     '/api/auth/forgot-password': { maxRequests: 3, windowSeconds: 3600 }, // 3/hour
     '/api/payment': { maxRequests: 5, windowSeconds: 300 }, // 5/5 min

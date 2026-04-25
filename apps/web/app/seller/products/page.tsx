@@ -183,8 +183,8 @@ export default function SellerProductsPage() {
           <button
             type="button"
             onClick={() => {
-              const headers = 'name,retailPrice,wholesalePrice,bulkPrice,wholesaleMinQty,bulkMinQty,description,hsnCode,unit';
-              const example = 'Steel Bearings SKF 6206,850,750,650,10,100,High-quality steel bearings for industrial use,84821010,piece';
+              const headers = 'name,retailPrice,wholesalePrice,bulkPrice,wholesaleMinQty,bulkMinQty,description,hsnCode,unit,partModelNumber,minimumOrderQuantity,taxPercentage,tags,buyersPreferredFrom,manufacturerName,manufacturerCountry,aboutManufacturer,stockedInCountry,stockedInQuantity,stockedInType,estimatedShippingDays';
+              const example = 'Steel Bearings SKF 6206,850,750,650,10,100,High-quality steel bearings for industrial use,84821010,PIECE,SKF-6206,10,18,Bearings|Industrial|Steel,India|UAE,SKF India Ltd,India,Leading bearing manufacturer since 1907,India,5000,Box,7';
               const csv = `${headers}\n${example}\n`;
               const blob = new Blob([csv], { type: 'text/csv' });
               const url = URL.createObjectURL(blob);

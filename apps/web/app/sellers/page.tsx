@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import axios from 'axios';
 import Header from '@/components/homepage/Header';
 import Footer from '@/components/homepage/Footer';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 
 interface SellerListItem {
   id: string;
@@ -38,7 +41,15 @@ const BADGE_CONFIG: Record<string, { label: string; classes: string }> = {
   IEC_GLOBAL: { label: '✓ IEC Global', classes: 'bg-blue-100 text-blue-800' },
 };
 
-function SellerCard({ seller }: { seller: SellerListItem }) {
+function SellerCard({
+  seller,
+  isSaved,
+  onToggleSave,
+}: {
+  seller: SellerListItem;
+  isSaved: boolean;
+  onToggleSave: (sellerId: string) => void;
+}) {
   const location = seller.city && seller.state
     ? `${seller.city}, ${seller.state}`
     : seller.state ?? seller.city ?? null;
@@ -55,21 +66,29 @@ function SellerCard({ seller }: { seller: SellerListItem }) {
             <p className="text-sm text-gray-500 mt-0.5">📍 {location}</p>
           )}
         </div>
+        <button
+          onClick={() => onToggleSave(seller.id)}
+          title={isSaved ? 'Remove from saved' : 'Save seller'}
+          className={`flex-shrink-0 p-1.5 rounded-full transition-colors ${
+            isSaved ? 'text-blue-600 bg-blue-50' : 'text-gray-300 hover:text-blue-500 hover:bg-blue-50'
+          }`}
+        >
+          <svg className="w-5 h-5" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+          </svg>
+        </button>
       </div>
 
-      {/* Stars */}
       <div className="flex gap-0.5 mb-2">
         {Array.from({ length: 5 }).map((_, i) => (
           <span key={i} className="text-yellow-400 text-sm">★</span>
         ))}
       </div>
 
-      {/* Stats */}
       <p className="text-xs text-gray-500 mb-3">
         {seller.productCount} Products · {seller.yearsInBusiness}+ years
       </p>
 
-      {/* Badges */}
       {seller.badges.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-4">
           {seller.badges.map((badge) => {
@@ -116,6 +135,45 @@ export default function SellersPage() {
   const [state, setState] = useState('');
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+    axios.get(`${API_URL}/api/buyer/saved`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        const sellers: { id: string }[] = res.data?.data?.sellers ?? [];
+        setSavedIds(new Set(sellers.map((s) => s.id)));
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleSave = async (sellerId: string) => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) { window.location.href = '/auth/signin?returnUrl=/sellers'; return; }
+    try {
+      const res = await axios.post(
+        `${API_URL}/api/buyer/save/seller/${sellerId}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const saved: boolean = res.data?.data?.saved ?? false;
+      setSavedIds((prev) => {
+        const next = new Set(prev);
+        saved ? next.add(sellerId) : next.delete(sellerId);
+        return next;
+      });
+      showToast(saved ? 'Seller saved to your list' : 'Seller removed from saved list');
+    } catch {
+      showToast('Failed to update saved list');
+    }
+  };
 
   const debounce = useCallback((value: string) => {
     const timeout = setTimeout(() => {
@@ -156,6 +214,11 @@ export default function SellersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
       <Header />
 
       {/* Page heading */}
@@ -214,7 +277,14 @@ export default function SellersPage() {
           {isLoading
             ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
             : sellers.length > 0
-              ? sellers.map((seller) => <SellerCard key={seller.id} seller={seller} />)
+              ? sellers.map((seller) => (
+                  <SellerCard
+                    key={seller.id}
+                    seller={seller}
+                    isSaved={savedIds.has(seller.id)}
+                    onToggleSave={handleToggleSave}
+                  />
+                ))
               : (
                 <div className="col-span-full text-center py-16 text-gray-500">
                   <p className="text-5xl mb-3">🔍</p>

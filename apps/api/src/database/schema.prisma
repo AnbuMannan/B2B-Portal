@@ -18,6 +18,15 @@ enum Role {
   ADMIN
 }
 
+/// Granular admin sub-roles (M21)
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  REVIEWER
+  FINANCE
+  SUPPORT
+}
+
 /// Seller company types
 enum CompanyType {
   PROPRIETORSHIP
@@ -65,6 +74,18 @@ enum RepeatOption {
   NONE
   WEEKLY
   MONTHLY
+}
+
+/// Requirement type for buyer posts (Module 16)
+enum RequirementType {
+  RETAIL
+  WHOLESALE
+}
+
+/// Currency for target price (Module 16)
+enum Currency {
+  INR
+  USD
 }
 
 /// Lead credit transaction types
@@ -121,12 +142,14 @@ model User {
   phoneNumber     String?   @unique
   passwordHash    String
   role            Role      @default(BUYER)
+  adminRole       AdminRole?
   isActive        Boolean   @default(true)
   phoneVerified   Boolean   @default(false)
   passwordResetToken  String?
   passwordResetExpiry DateTime?
   twoFaSecret     String?
   twoFaEnabled    Boolean   @default(false)
+  lastLoginAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
@@ -139,8 +162,11 @@ model User {
   approvedProducts Product[]        @relation("ProductApprovedBy")
   auditLogs        AuditLog[]
   notificationPreferences NotificationPreferences?
-  reportedTickets  ComplaintTicket[] @relation("TicketsByReporter")
-  receivedTickets  ComplaintTicket[] @relation("TicketsByReportedUser")
+  reportedTickets    ComplaintTicket[]         @relation("TicketsByReporter")
+  receivedTickets    ComplaintTicket[]         @relation("TicketsByReportedUser")
+  ticketResponses    ComplaintTicketResponse[] @relation("TicketResponsesByAdmin")
+  consentRecords     ConsentRecord[]
+  dataExportRequests DataExportRequest[]
 
   @@index([role, isActive])
 }
@@ -214,13 +240,41 @@ model Buyer {
   user         User          @relation(fields: [userId], references: [id])
   businessType BusinessType
   gstinNumber  String?
+  companyName  String?
   isVerified   Boolean       @default(false)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   deletedAt    DateTime?
 
-  buyLeads  BuyLead[]
-  orders    Order[]          @relation("OrdersByBuyer")
+  buyLeads       BuyLead[]
+  orders         Order[]              @relation("OrdersByBuyer")
+  savedSellers   BuyerSavedSeller[]
+  savedProducts  BuyerSavedProduct[]
+}
+
+/// Module 19: Buyer watchlist — saved products
+model BuyerSavedProduct {
+  id        String   @id @default(cuid())
+  buyerId   String
+  buyer     Buyer    @relation(fields: [buyerId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  savedAt   DateTime @default(now())
+
+  @@unique([buyerId, productId])
+  @@index([buyerId, savedAt(sort: Desc)])
+}
+
+/// Buyer watchlist — saved sellers (bookmarked)
+model BuyerSavedSeller {
+  id       String   @id @default(cuid())
+  buyerId  String
+  buyer    Buyer    @relation(fields: [buyerId], references: [id])
+  sellerId String
+  savedAt  DateTime @default(now())
+
+  @@unique([buyerId, sellerId])
+  @@index([buyerId, savedAt(sort: Desc)])
 }
 
 /// Categories table
@@ -254,20 +308,35 @@ model Product {
   images                Json?
   certifications        Json?
   countryOfOrigin       String?
+  partModelNumber       String?
+  minimumOrderQuantity  Decimal?             @db.Decimal(18, 4)
+  taxPercentage         Decimal?             @db.Decimal(5, 2)
+  tags                  String[]
+  buyersPreferredFrom   String[]
+  manufacturerName      String?
+  manufacturerCountry   String?
+  aboutManufacturer     String?
+  stockedInCountry      String?
+  stockedInQuantity     Decimal?             @db.Decimal(18, 4)
+  stockedInType         String?
+  estimatedShippingDays Int?
   availabilityStatus    AvailabilityStatus   @default(IN_STOCK)
   isActive              Boolean              @default(true)
   adminApprovalStatus   AdminApprovalStatus  @default(PENDING)
   approvedBy            String?
   approvedByUser        User?                @relation("ProductApprovedBy", fields: [approvedBy], references: [id])
   approvalDate          DateTime?
+  isFlagged             Boolean              @default(false)
+  flagReason            String?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   deletedAt             DateTime?
 
-  categories ProductCategory[]
-  orders     Order[]
-  quotes     Quote[]
-  viewTracking ProductViewTracking[]
+  categories    ProductCategory[]
+  orders        Order[]
+  quotes        Quote[]
+  viewTracking  ProductViewTracking[]
+  savedByBuyers BuyerSavedProduct[]
 
   @@index([sellerId, isActive])
   @@index([adminApprovalStatus, createdAt(sort: Desc)])
@@ -301,6 +370,11 @@ model BuyLead {
   isOpen           Boolean       @default(true)
   expiryDate       DateTime?
   repeatOption     RepeatOption  @default(NONE)
+  /// Module 16 — Post Buy Requirement
+  requirementType  RequirementType?
+  currency         Currency      @default(INR)
+  deliveryState    String?
+  additionalNotes  String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   expiresAt        DateTime?
@@ -312,6 +386,7 @@ model BuyLead {
 
   contactReveals LeadContactReveal[]
   savedBy        SellerSavedLead[]
+  quotes         Quote[]
 
   @@index([buyerId])
   @@index([expiryDate])
@@ -370,6 +445,12 @@ model LeadCreditTransaction {
   timestamp          DateTime           @default(now())
   referenceId        String?            @unique
   createdAt          DateTime           @default(now())
+  /// GSTN IRP Invoice Reference Number (64-char hash) — set when IRP e-invoice is registered
+  irn                String?
+  /// IRP acknowledgement number returned by GSTN portal
+  ackNo              String?
+  /// Signed QR code data returned by IRP (to be printed on invoice)
+  irpQrCode          String?            @db.Text
 
   @@index([sellerId, type])
   @@index([walletId])
@@ -416,6 +497,7 @@ model Order {
   platformFacilitationFee Decimal?     @db.Decimal(18, 2)
   paymentStatus          PaymentStatus @default(PENDING)
   paymentMethod          String?
+  razorpayOrderId        String?
   razorpayPaymentId      String?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
@@ -438,6 +520,10 @@ model Quote {
   seller      Seller      @relation(fields: [sellerId], references: [id])
   productId   String?
   product     Product?    @relation(fields: [productId], references: [id])
+  /// Module 17: back-link to the originating buy requirement so buyer
+  /// can group quotes by requirement. Nullable for legacy quotes.
+  buyLeadId   String?
+  buyLead     BuyLead?    @relation(fields: [buyLeadId], references: [id])
   quotedPrice Decimal     @db.Decimal(18, 2)
   leadTime    String?
   notes       String?
@@ -445,8 +531,29 @@ model Quote {
   createdAt   DateTime    @default(now())
   expiresAt   DateTime?
 
+  negotiations NegotiationMessage[]
+
   @@index([orderId])
   @@index([sellerId, status])
+  @@index([buyLeadId, status])
+}
+
+/// Module 17: Back-and-forth negotiation messages on a Quote
+enum NegotiationRole {
+  BUYER
+  SELLER
+}
+
+model NegotiationMessage {
+  id           String          @id @default(cuid())
+  quoteId      String
+  quote        Quote           @relation(fields: [quoteId], references: [id])
+  fromRole     NegotiationRole
+  counterPrice Decimal?        @db.Decimal(18, 2)
+  message      String
+  createdAt    DateTime        @default(now())
+
+  @@index([quoteId, createdAt(sort: Desc)])
 }
 
 /// Admin approvals for entities
@@ -502,25 +609,76 @@ model NotificationPreferences {
   updatedAt              DateTime @updatedAt
 }
 
-/// Complaint/support ticket
+/// Module 20: Complaint categories
+enum ComplaintCategory {
+  FRAUD
+  PRODUCT_QUALITY
+  PAYMENT
+  DELIVERY
+  OTHER
+}
+
+/// Complaint/support ticket (Module 20)
 model ComplaintTicket {
-  id             String      @id @default(cuid())
+  id             String            @id @default(cuid())
   reporterId     String
-  reporter       User        @relation("TicketsByReporter", fields: [reporterId], references: [id])
+  reporter       User              @relation("TicketsByReporter", fields: [reporterId], references: [id])
   reportedUserId String
-  reportedUser   User        @relation("TicketsByReportedUser", fields: [reportedUserId], references: [id])
+  reportedUser   User              @relation("TicketsByReportedUser", fields: [reportedUserId], references: [id])
+  category       ComplaintCategory @default(OTHER)
   subject        String
   description    String
-  status         ComplaintStatus @default(OPEN)
+  status         ComplaintStatus   @default(OPEN)
   attachments    Json?
-  createdAt      DateTime    @default(now())
+  /// SLA deadline: createdAt + 48 h (Consumer Protection Rules 2020)
+  slaDeadline    DateTime?
+  slaBreach      Boolean           @default(false)
+  adminNotes     String?
+  orderId        String?
+  escalatedAt    DateTime?
+  escalatedTo    String?   // Admin user ID of senior admin
+  escalatedBy    String?   // Admin user ID who escalated
+  createdAt      DateTime          @default(now())
   resolvedAt     DateTime?
-  updatedAt      DateTime    @updatedAt
+  updatedAt      DateTime          @updatedAt
   deletedAt      DateTime?
+
+  responses ComplaintTicketResponse[]
 
   @@index([reporterId])
   @@index([status, createdAt(sort: Desc)])
+  @@index([slaBreach, status])
   @@index([createdAt(sort: Desc)])
+}
+
+/// Admin responses on a complaint ticket
+model ComplaintTicketResponse {
+  id          String          @id @default(cuid())
+  ticketId    String
+  ticket      ComplaintTicket @relation(fields: [ticketId], references: [id])
+  responderId String
+  responder   User            @relation("TicketResponsesByAdmin", fields: [responderId], references: [id])
+  message     String
+  isInternal  Boolean         @default(false) // Internal admin notes — not shown to complainant
+  createdAt   DateTime        @default(now())
+
+  @@index([ticketId, createdAt(sort: Desc)])
+}
+
+/// Grievance Officer contact form — required by IT Act / DPDP Act (public, no auth)
+model GrievanceContact {
+  id          String   @id @default(cuid())
+  name        String
+  email       String
+  phone       String?
+  subject     String
+  description String
+  category    String   @default("OTHER")
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+
+  @@index([status, createdAt(sort: Desc)])
 }
 
 enum ComplaintStatus {
@@ -617,6 +775,142 @@ model RefreshToken {
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
+}
+
+/// Module 25: Fraud block list — email/phone/IP entries that are blocked platform-wide
+model BlockList {
+  id          String   @id @default(cuid())
+  email       String?
+  phoneNumber String?
+  ipAddress   String?
+  userId      String?
+  reason      String
+  blockedBy   String
+  blockedAt   DateTime @default(now())
+  unblockedAt DateTime?
+  isActive    Boolean  @default(true)
+  notes       String?
+
+  @@index([email])
+  @@index([phoneNumber])
+  @@index([userId])
+  @@index([isActive, blockedAt(sort: Desc)])
+}
+
+/// Module 27: DPDP Act 2023 — User consent records
+/// Legal basis: DPDP Act §6 (informed & specific consent), §7 (deemed consent for essential services)
+model ConsentRecord {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  consentType   String    // ESSENTIAL | MARKETING | ANALYTICS | DATA_SHARING
+  version       String    // Policy version at time of consent, e.g. "v2024.1"
+  givenAt       DateTime  @default(now())
+  ipAddress     String?
+  userAgent     String?
+  withdrawnAt   DateTime?
+
+  @@index([userId, consentType])
+  @@index([userId, givenAt(sort: Desc)])
+}
+
+/// Module 27: DPDP Act §12 — Data portability export requests
+model DataExportRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  status      String    @default("QUEUED") // QUEUED | PROCESSING | READY | EXPIRED | FAILED
+  fileUrl     String?   // Signed path valid 24h; null until ready
+  expiresAt   DateTime?
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  errorMsg    String?
+
+  @@index([userId, requestedAt(sort: Desc)])
+  @@index([status])
+}
+
+/// Module 27: DPDP Act §13 — Grievance Officer tickets (legal obligation; distinct from support tickets)
+/// 72-hour response SLA mandated by DPDP Act §13(3)
+model GrievanceTicket {
+  id              String    @id @default(cuid())
+  name            String
+  email           String
+  phone           String?
+  subject         String
+  description     String
+  category        String    // DATA_BREACH | CONSENT | ERASURE | CORRECTION | PORTABILITY | OTHER
+  userId          String?   // null for unauthenticated filers
+  status          String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | CLOSED
+  slaDeadline     DateTime  // givenAt + 72h
+  slaBreach       Boolean   @default(false)
+  responseNotes   String?
+  respondedAt     DateTime?
+  respondedBy     String?   // Admin user ID
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status, slaDeadline])
+  @@index([email])
+  @@index([createdAt(sort: Desc)])
+}
+
+/// Module 26: Homepage promotional banners (CMS-managed)
+model HomepageBanner {
+  id        String    @id @default(cuid())
+  title     String
+  imageUrl  String
+  linkUrl   String?
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@index([startDate, endDate])
+}
+
+/// Module 26: Lead credit pack configurations (admin-managed pricing)
+model CreditPackConfig {
+  id        String   @id @default(cuid())
+  name      String
+  credits   Int
+  priceInr  Int
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// Module 26: Prohibited keyword registry (admin-managed)
+model ProhibitedKeyword {
+  id        String   @id @default(cuid())
+  keyword   String   @unique
+  addedBy   String
+  addedAt   DateTime @default(now())
+
+  @@index([keyword])
+  @@index([addedAt(sort: Desc)])
+}
+
+/// Module 26: Notification templates (bilingual EN + HI)
+model NotificationTemplate {
+  id         String   @id @default(cuid())
+  key        String   @unique // e.g. KYC_APPROVED, NEW_ORDER
+  titleEn    String
+  bodyEn     String
+  titleHi    String
+  bodyHi     String
+  variables  String[] // placeholder names: ["sellerName", "amount"]
+  isActive   Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+  updatedBy  String?
+
+  @@index([key])
 }
 
 /// KYC documents uploaded by sellers (Module 8)

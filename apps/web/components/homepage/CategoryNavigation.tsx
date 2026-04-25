@@ -131,7 +131,7 @@ export default function CategoryNavigation() {
           <a href="/sell" className="text-gray-700 hover:text-blue-600 transition-colors">
             Sell
           </a>
-          <a href="/post-requirement" className="text-gray-700 hover:text-blue-600 transition-colors">
+          <a href="/buyer/requirements/new" className="text-gray-700 hover:text-blue-600 transition-colors">
             Post Requirement
           </a>
         </div>

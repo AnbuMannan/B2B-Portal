@@ -1,0 +1,97 @@
+{
+  "nav": {
+    "home": "होम",
+    "products": "उत्पाद",
+    "sellers": "आपूर्तिकर्ता",
+    "postRequirement": "आवश्यकता पोस्ट करें",
+    "signIn": "साइन इन",
+    "signUp": "साइन अप",
+    "myAccount": "मेरा खाता",
+    "signOut": "साइन आउट",
+    "dashboard": "डैशबोर्ड",
+    "searchPlaceholder": "उत्पाद, आपूर्तिकर्ता खोजें..."
+  },
+  "common": {
+    "loading": "लोड हो रहा है...",
+    "error": "कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "submit": "सबमिट करें",
+    "back": "वापस",
+    "viewAll": "सभी देखें",
+    "learnMore": "और जानें",
+    "contactSupplier": "आपूर्तिकर्ता से संपर्क करें",
+    "saveProduct": "उत्पाद सहेजें",
+    "savedProduct": "सहेजा गया",
+    "enquireNow": "अभी पूछताछ करें",
+    "getQuote": "कोटेशन पाएं",
+    "language": "भाषा",
+    "verified": "सत्यापित",
+    "noResults": "कोई परिणाम नहीं मिला"
+  },
+  "hero": {
+    "title": "भारत का प्रमुख B2B मार्केटप्लेस",
+    "subtitle": "सत्यापित आपूर्तिकर्ताओं से जुड़ें, आवश्यकताएं पोस्ट करें और अपना व्यवसाय बढ़ाएं",
+    "searchPlaceholder": "उत्पाद, आपूर्तिकर्ता, श्रेणियां खोजें...",
+    "searchButton": "खोजें",
+    "stats": {
+      "suppliers": "सत्यापित आपूर्तिकर्ता",
+      "products": "सूचीबद्ध उत्पाद",
+      "buyers": "सक्रिय खरीदार",
+      "states": "राज्य कवर"
+    }
+  },
+  "auth": {
+    "signIn": "साइन इन",
+    "signUp": "साइन अप",
+    "email": "ईमेल पता",
+    "password": "पासवर्ड",
+    "forgotPassword": "पासवर्ड भूल गए?",
+    "noAccount": "खाता नहीं है?",
+    "hasAccount": "पहले से खाता है?",
+    "registerAs": "के रूप में पंजीकरण करें",
+    "buyer": "खरीदार",
+    "seller": "विक्रेता / आपूर्तिकर्ता",
+    "orContinueWith": "या इससे जारी रखें",
+    "agreeTerms": "मैं सेवा की शर्तों और गोपनीयता नीति से सहमत हूं"
+  },
+  "product": {
+    "hsnCode": "HSN कोड",
+    "availability": "उपलब्धता",
+    "inStock": "स्टॉक में",
+    "outOfStock": "स्टॉक से बाहर",
+    "minOrder": "न्यूनतम ऑर्डर",
+    "category": "श्रेणी",
+    "description": "विवरण",
+    "specifications": "विशेषताएं",
+    "supplier": "आपूर्तिकर्ता",
+    "priceOnRequest": "अनुरोध पर मूल्य",
+    "sendEnquiry": "पूछताछ भेजें",
+    "relatedProducts": "संबंधित उत्पाद"
+  },
+  "seller": {
+    "registerBusiness": "अपना व्यवसाय पंजीकृत करें",
+    "kycPending": "KYC समीक्षाधीन",
+    "kycApproved": "KYC स्वीकृत",
+    "kycRejected": "KYC अस्वीकृत",
+    "listProduct": "उत्पाद सूचीबद्ध करें",
+    "myProducts": "मेरे उत्पाद",
+    "viewAnalytics": "एनालिटिक्स देखें",
+    "wallet": "लीड क्रेडिट वॉलेट"
+  },
+  "buyer": {
+    "postRequirement": "आवश्यकता पोस्ट करें",
+    "myRequirements": "मेरी आवश्यकताएं",
+    "myQuotes": "मेरे कोटेशन",
+    "myOrders": "मेरे ऑर्डर",
+    "savedProducts": "सहेजे गए उत्पाद",
+    "savedSuppliers": "सहेजे गए आपूर्तिकर्ता"
+  },
+  "footer": {
+    "rights": "सर्वाधिकार सुरक्षित",
+    "privacy": "गोपनीयता नीति",
+    "terms": "सेवा की शर्तें",
+    "contact": "संपर्क करें",
+    "tagline": "भारतीय व्यवसायों को जोड़ना, एक व्यापार एक बार"
+  }
+}

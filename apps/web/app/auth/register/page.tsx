@@ -85,7 +85,7 @@ function RegisterContent() {
         if (data.role === 'SELLER') {
           router.push('/seller/register');
         } else {
-          router.push('/');
+          router.push('/buyer/register');
         }
       }
     } catch (err: any) {
@@ -110,7 +110,7 @@ function RegisterContent() {
           if (selectedRole === 'SELLER') {
             router.push('/seller/register');
           } else {
-            router.push('/');
+            router.push('/buyer/register');
           }
         }, 1500);
       }

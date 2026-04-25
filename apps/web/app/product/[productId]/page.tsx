@@ -7,6 +7,7 @@ import ImageGallery from './components/ImageGallery';
 import PricingTable from './components/PricingTable';
 import SellerCard from './components/SellerCard';
 import EnquiryModal from './components/EnquiryModal';
+import SaveProductButton from './components/SaveProductButton';
 import RelatedProducts from './components/RelatedProducts';
 import ExpandableDescription from './components/ExpandableDescription';
 import { ProductSchema } from '@/components/seo/ProductSchema';
@@ -110,7 +111,7 @@ export default async function ProductDetailPage({
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 overflow-x-hidden">
         <Header />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -206,6 +207,7 @@ export default async function ProductDetailPage({
                   productId={product.id}
                   productName={product.name}
                 />
+                <SaveProductButton productId={product.id} />
               </div>
             </div>
           </div>

@@ -11,7 +11,6 @@ import dynamic from 'next/dynamic';
 import PricingTable from './PricingTable';
 import ImageUploader from './ImageUploader';
 
-// Dynamically import to avoid SSR issues with Tiptap (uses browser APIs)
 const RichTextEditor = dynamic(() => import('../../../../components/editor/RichTextEditor'), {
   ssr: false,
   loading: () => (
@@ -22,16 +21,10 @@ const RichTextEditor = dynamic(() => import('../../../../components/editor/RichT
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 
 const UNITS = ['PIECE', 'KG', 'LITRE', 'METRE', 'TON', 'BOX', 'BUNDLE', 'PACK'];
-const COUNTRIES = ['India', 'China', 'USA', 'Germany', 'Japan', 'South Korea', 'Taiwan', 'Other'];
+const COUNTRIES = ['India', 'China', 'USA', 'Germany', 'Japan', 'South Korea', 'Taiwan', 'UAE', 'UK', 'Other'];
+const STOCKED_IN_TYPES = ['Box', 'Strip', 'Unit', 'Bottle', 'Tablet', 'Vial', 'Bag', 'Roll', 'Pallet', 'Other'];
 const PRESET_CERTIFICATIONS = [
-  'ISO 9001',
-  'ISO 14001',
-  'FSSAI',
-  'Drug Licence',
-  'CE Mark',
-  'BIS',
-  'REACH',
-  'RoHS',
+  'ISO 9001', 'ISO 14001', 'FSSAI', 'Drug Licence', 'CE Mark', 'BIS', 'REACH', 'RoHS',
 ];
 
 const tierSchema = z.object({
@@ -54,6 +47,19 @@ const productSchema = z.object({
     wholesale: tierSchema.optional(),
     bulk: tierSchema.optional(),
   }),
+  // new fields
+  partModelNumber: z.string().optional(),
+  minimumOrderQuantity: z.coerce.number().min(1).optional().or(z.literal('')).transform((v) => v === '' ? undefined : v),
+  taxPercentage: z.coerce.number().min(0).max(100).optional().or(z.literal('')).transform((v) => v === '' ? undefined : v),
+  tags: z.array(z.string()),
+  buyersPreferredFrom: z.array(z.string()),
+  manufacturerName: z.string().optional(),
+  manufacturerCountry: z.string().optional(),
+  aboutManufacturer: z.string().optional(),
+  stockedInCountry: z.string().optional(),
+  stockedInQuantity: z.coerce.number().min(0).optional().or(z.literal('')).transform((v) => v === '' ? undefined : v),
+  stockedInType: z.string().optional(),
+  estimatedShippingDays: z.coerce.number().int().min(1).optional().or(z.literal('')).transform((v) => v === '' ? undefined : v),
 }).superRefine((data, ctx) => {
   const { retail, wholesale, bulk } = data.multiTierPricing;
   const hasEnabled = retail?.enabled || wholesale?.enabled || bulk?.enabled;
@@ -64,22 +70,13 @@ const productSchema = z.object({
       path: ['multiTierPricing'],
     });
   }
-  // Validate enabled tiers have price and moq
   for (const [key, tier] of Object.entries(data.multiTierPricing)) {
     if (tier?.enabled) {
       if (!tier.price || tier.price <= 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Price is required for enabled tier',
-          path: ['multiTierPricing', key, 'price'],
-        });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Price is required for enabled tier', path: ['multiTierPricing', key, 'price'] });
       }
       if (!tier.moq || tier.moq < 1) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'MOQ is required for enabled tier',
-          path: ['multiTierPricing', key, 'moq'],
-        });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'MOQ is required for enabled tier', path: ['multiTierPricing', key, 'moq'] });
       }
     }
   }
@@ -100,7 +97,6 @@ interface Category {
 }
 
 interface ProductFormProps {
-  /** Pre-fill values for edit mode */
   defaultValues?: Partial<ProductFormData> & { images?: UploadedImage[] };
   onSubmit: (data: ProductFormData & { images: UploadedImage[]; isDraft: boolean }) => Promise<void>;
   isSubmitting?: boolean;
@@ -116,6 +112,7 @@ export default function ProductForm({
   const [categories, setCategories] = useState<Category[]>([]);
   const [images, setImages] = useState<UploadedImage[]>(defaultValues?.images ?? []);
   const [customCert, setCustomCert] = useState('');
+  const [tagInput, setTagInput] = useState('');
   const [serverError, setServerError] = useState<string | null>(null);
 
   const methods = useForm<ProductFormData>({
@@ -134,6 +131,18 @@ export default function ProductForm({
         wholesale: { price: undefined, moq: undefined, enabled: false },
         bulk: { price: undefined, moq: undefined, enabled: false },
       },
+      partModelNumber: defaultValues?.partModelNumber ?? '',
+      minimumOrderQuantity: defaultValues?.minimumOrderQuantity ?? ('' as any),
+      taxPercentage: defaultValues?.taxPercentage ?? ('' as any),
+      tags: defaultValues?.tags ?? [],
+      buyersPreferredFrom: defaultValues?.buyersPreferredFrom ?? [],
+      manufacturerName: defaultValues?.manufacturerName ?? '',
+      manufacturerCountry: defaultValues?.manufacturerCountry ?? '',
+      aboutManufacturer: defaultValues?.aboutManufacturer ?? '',
+      stockedInCountry: defaultValues?.stockedInCountry ?? '',
+      stockedInQuantity: defaultValues?.stockedInQuantity ?? ('' as any),
+      stockedInType: defaultValues?.stockedInType ?? '',
+      estimatedShippingDays: defaultValues?.estimatedShippingDays ?? ('' as any),
     },
   });
 
@@ -147,6 +156,8 @@ export default function ProductForm({
 
   const selectedCategoryIds = watch('categoryIds');
   const selectedCertifications = watch('certifications');
+  const selectedTags = watch('tags');
+  const selectedBuyersFrom = watch('buyersPreferredFrom');
 
   useEffect(() => {
     axios
@@ -162,33 +173,39 @@ export default function ProductForm({
 
   const toggleCategory = (id: string) => {
     const current = selectedCategoryIds ?? [];
-    if (current.includes(id)) {
-      setValue('categoryIds', current.filter((c) => c !== id));
-    } else {
-      setValue('categoryIds', [...current, id]);
-    }
+    setValue('categoryIds', current.includes(id) ? current.filter((c) => c !== id) : [...current, id]);
   };
 
   const toggleCertification = (cert: string) => {
     const current = selectedCertifications ?? [];
-    if (current.includes(cert)) {
-      setValue('certifications', current.filter((c) => c !== cert));
-    } else {
-      setValue('certifications', [...current, cert]);
-    }
+    setValue('certifications', current.includes(cert) ? current.filter((c) => c !== cert) : [...current, cert]);
   };
 
   const addCustomCert = () => {
     const trimmed = customCert.trim();
     if (!trimmed) return;
     const current = selectedCertifications ?? [];
-    if (!current.includes(trimmed)) {
-      setValue('certifications', [...current, trimmed]);
-    }
+    if (!current.includes(trimmed)) setValue('certifications', [...current, trimmed]);
     setCustomCert('');
   };
 
-  // Group categories: parents first, then children
+  const addTag = () => {
+    const trimmed = tagInput.trim();
+    if (!trimmed) return;
+    const current = selectedTags ?? [];
+    if (!current.includes(trimmed)) setValue('tags', [...current, trimmed]);
+    setTagInput('');
+  };
+
+  const removeTag = (tag: string) => {
+    setValue('tags', (selectedTags ?? []).filter((t) => t !== tag));
+  };
+
+  const toggleBuyersFrom = (country: string) => {
+    const current = selectedBuyersFrom ?? [];
+    setValue('buyersPreferredFrom', current.includes(country) ? current.filter((c) => c !== country) : [...current, country]);
+  };
+
   const parentCategories = categories.filter((c) => !c.parentId);
   const childCategories = (parentId: string) => categories.filter((c) => c.parentId === parentId);
 
@@ -217,24 +234,38 @@ export default function ProductForm({
           </div>
         )}
 
-        {/* ── Section 1: Basic Info ─────────────────────────────── */}
+        {/* ── Section 1: Basic Information ─────────────────────── */}
         <section>
           <h3 className="text-base font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">
             Basic Information
           </h3>
           <div className="space-y-5">
-            {/* Product Name */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Product Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                {...register('name')}
-                type="text"
-                placeholder="e.g. Stainless Steel Bolts M8x30"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+            {/* Product Name + Part/Model Number */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Product Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  {...register('name')}
+                  type="text"
+                  placeholder="e.g. Stainless Steel Bolts M8x30"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Part / Model Number
+                </label>
+                <input
+                  {...register('partModelNumber')}
+                  type="text"
+                  placeholder="e.g. SKF-6206 or M8-30/SS"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Letters, numbers, hyphens and slashes</p>
+              </div>
             </div>
 
             {/* Categories */}
@@ -283,13 +314,11 @@ export default function ProductForm({
                 </div>
               )}
               {selectedCategoryIds?.length > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {selectedCategoryIds.length} selected
-                </p>
+                <p className="text-xs text-gray-500 mt-1">{selectedCategoryIds.length} selected</p>
               )}
             </div>
 
-            {/* Description — Tiptap rich text editor */}
+            {/* Description */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
               <Controller
@@ -310,23 +339,16 @@ export default function ProductForm({
             {/* Country of Origin + Availability */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Country of Origin
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Country of Origin</label>
                 <select
                   {...register('countryOfOrigin')}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {COUNTRIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                  {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Availability
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Availability</label>
                 <Controller
                   name="availabilityStatus"
                   control={methods.control}
@@ -339,9 +361,7 @@ export default function ProductForm({
                           onClick={() => field.onChange(val)}
                           className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
                             field.value === val
-                              ? val === 'IN_STOCK'
-                                ? 'bg-green-600 text-white'
-                                : 'bg-red-500 text-white'
+                              ? val === 'IN_STOCK' ? 'bg-green-600 text-white' : 'bg-red-500 text-white'
                               : 'text-gray-500 hover:bg-gray-50'
                           }`}
                         >
@@ -352,6 +372,66 @@ export default function ProductForm({
                   )}
                 />
               </div>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Tags <span className="text-gray-400 font-normal text-xs">(for search — e.g. Gloves, Masks)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                  placeholder="Type a tag and press Enter or Add"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={addTag}
+                  className="px-4 py-2 text-sm bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+              {(selectedTags ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(selectedTags ?? []).map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-sm px-3 py-1 rounded-full border border-indigo-200">
+                      #{tag}
+                      <button type="button" onClick={() => removeTag(tag)} className="text-indigo-400 hover:text-indigo-600 text-base leading-none">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Buyers Preferred From */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Buyers Preferred From <span className="text-gray-400 font-normal text-xs">(countries you supply to)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[...COUNTRIES, 'All Countries'].map((country) => (
+                  <button
+                    key={country}
+                    type="button"
+                    onClick={() => toggleBuyersFrom(country)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      (selectedBuyersFrom ?? []).includes(country)
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'text-gray-600 border-gray-300 hover:border-green-400'
+                    }`}
+                  >
+                    {country}
+                  </button>
+                ))}
+              </div>
+              {(selectedBuyersFrom ?? []).length > 0 && (
+                <p className="text-xs text-gray-500 mt-1">{(selectedBuyersFrom ?? []).length} selected</p>
+              )}
             </div>
           </div>
         </section>
@@ -365,16 +445,12 @@ export default function ProductForm({
             <div className="grid grid-cols-2 gap-4">
               {/* Unit */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Unit of Measure
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
                 <select
                   {...register('unit')}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {UNITS.map((u) => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
+                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
 
@@ -402,15 +478,159 @@ export default function ProductForm({
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              {/* Minimum Order Quantity (global) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Minimum Order Quantity
+                </label>
+                <input
+                  {...register('minimumOrderQuantity')}
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 50"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Global MOQ (overrides tier MOQ for display)</p>
+                {(errors as any).minimumOrderQuantity && (
+                  <p className="text-red-500 text-xs mt-1">{(errors as any).minimumOrderQuantity.message}</p>
+                )}
+              </div>
+
+              {/* Tax % */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Product Tax % <span className="text-gray-400 font-normal text-xs">(GST rate)</span>
+                </label>
+                <input
+                  {...register('taxPercentage')}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  placeholder="e.g. 18"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Numeric only — 18 means 18%</p>
+                {(errors as any).taxPercentage && (
+                  <p className="text-red-500 text-xs mt-1">{(errors as any).taxPercentage.message}</p>
+                )}
+              </div>
+            </div>
+
             {/* Multi-tier pricing */}
             <PricingTable />
-            {pricingError && (
-              <p className="text-red-500 text-xs mt-1">{pricingError}</p>
-            )}
+            {pricingError && <p className="text-red-500 text-xs mt-1">{pricingError}</p>}
           </div>
         </section>
 
-        {/* ── Section 3: Images ─────────────────────────────────── */}
+        {/* ── Section 3: Manufacturer Information ───────────────── */}
+        <section>
+          <h3 className="text-base font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">
+            Manufacturer Information
+          </h3>
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer Name</label>
+                <input
+                  {...register('manufacturerName')}
+                  type="text"
+                  placeholder="e.g. Tata Steel Ltd"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer Country</label>
+                <select
+                  {...register('manufacturerCountry')}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Select —</option>
+                  {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">About Manufacturer</label>
+              <textarea
+                {...register('aboutManufacturer')}
+                rows={3}
+                placeholder="Brief description of the manufacturer — location, specialisation, certifications…"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* ── Section 4: Inventory & Shipping ───────────────────── */}
+        <section>
+          <h3 className="text-base font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">
+            Inventory &amp; Shipping
+          </h3>
+          <div className="space-y-5">
+            <div className="grid grid-cols-3 gap-4">
+              {/* Stocked In Country */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stocked In Country</label>
+                <select
+                  {...register('stockedInCountry')}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Select —</option>
+                  {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              {/* Stocked In Quantity */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stocked In Quantity</label>
+                <input
+                  {...register('stockedInQuantity')}
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 5000"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {(errors as any).stockedInQuantity && (
+                  <p className="text-red-500 text-xs mt-1">{(errors as any).stockedInQuantity.message}</p>
+                )}
+              </div>
+
+              {/* Stocked In Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stocked In Type</label>
+                <select
+                  {...register('stockedInType')}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Select —</option>
+                  {STOCKED_IN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Est. Shipping Days */}
+            <div className="max-w-xs">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Est. Shipping Time <span className="text-gray-400 font-normal text-xs">(max days)</span>
+              </label>
+              <input
+                {...register('estimatedShippingDays')}
+                type="number"
+                min={1}
+                placeholder="e.g. 7"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">If 5–7 days, enter 7</p>
+              {(errors as any).estimatedShippingDays && (
+                <p className="text-red-500 text-xs mt-1">{(errors as any).estimatedShippingDays.message}</p>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* ── Section 5: Product Images ─────────────────────────── */}
         <section>
           <h3 className="text-base font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">
             Product Images
@@ -418,13 +638,12 @@ export default function ProductForm({
           <ImageUploader value={images} onChange={setImages} />
         </section>
 
-        {/* ── Section 4: Certifications ─────────────────────────── */}
+        {/* ── Section 6: Certifications ─────────────────────────── */}
         <section>
           <h3 className="text-base font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">
             Certifications
           </h3>
           <div className="space-y-4">
-            {/* Preset certifications */}
             <div className="flex flex-wrap gap-2">
               {PRESET_CERTIFICATIONS.map((cert) => (
                 <button
@@ -441,8 +660,6 @@ export default function ProductForm({
                 </button>
               ))}
             </div>
-
-            {/* Custom certification */}
             <div className="flex gap-2">
               <input
                 type="text"
@@ -460,8 +677,6 @@ export default function ProductForm({
                 Add
               </button>
             </div>
-
-            {/* Selected certifications */}
             {selectedCertifications?.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {selectedCertifications.map((cert) => (
@@ -500,9 +715,7 @@ export default function ProductForm({
             onClick={handleSubmit((data) => handleFormSubmit(data, false), handleValidationError)}
             className="flex-1 bg-blue-600 text-white rounded-lg py-2.5 px-6 font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 whitespace-nowrap"
           >
-            {isSubmitting || parentSubmitting
-              ? 'Submitting…'
-              : submitLabel ?? 'Submit for Review'}
+            {isSubmitting || parentSubmitting ? 'Submitting…' : submitLabel ?? 'Submit for Review'}
           </button>
         </div>
       </div>

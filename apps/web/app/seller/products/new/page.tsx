@@ -64,6 +64,18 @@ function NewProductPageInner() {
         multiTierPricing: data.multiTierPricing,
         images: data.images.map((img: any) => img.fileUrl),
         isDraft: data.isDraft,
+        partModelNumber: data.partModelNumber || undefined,
+        minimumOrderQuantity: data.minimumOrderQuantity || undefined,
+        taxPercentage: data.taxPercentage || undefined,
+        tags: data.tags ?? [],
+        buyersPreferredFrom: data.buyersPreferredFrom ?? [],
+        manufacturerName: data.manufacturerName || undefined,
+        manufacturerCountry: data.manufacturerCountry || undefined,
+        aboutManufacturer: data.aboutManufacturer || undefined,
+        stockedInCountry: data.stockedInCountry || undefined,
+        stockedInQuantity: data.stockedInQuantity || undefined,
+        stockedInType: data.stockedInType || undefined,
+        estimatedShippingDays: data.estimatedShippingDays || undefined,
       };
 
       await axios.post(`${API_URL}/api/seller/products`, payload, {
@@ -97,7 +109,19 @@ function NewProductPageInner() {
         categoryIds: (duplicateData.categories ?? []).map((c: any) => c.id),
         certifications: duplicateData.certifications ?? [],
         multiTierPricing: duplicateData.multiTierPricing ?? {},
-        images: [], // don't copy images for duplicates
+        images: [],
+        partModelNumber: duplicateData.partModelNumber,
+        minimumOrderQuantity: duplicateData.minimumOrderQuantity,
+        taxPercentage: duplicateData.taxPercentage,
+        tags: duplicateData.tags ?? [],
+        buyersPreferredFrom: duplicateData.buyersPreferredFrom ?? [],
+        manufacturerName: duplicateData.manufacturerName,
+        manufacturerCountry: duplicateData.manufacturerCountry,
+        aboutManufacturer: duplicateData.aboutManufacturer,
+        stockedInCountry: duplicateData.stockedInCountry,
+        stockedInQuantity: duplicateData.stockedInQuantity,
+        stockedInType: duplicateData.stockedInType,
+        estimatedShippingDays: duplicateData.estimatedShippingDays,
       }
     : undefined;
 

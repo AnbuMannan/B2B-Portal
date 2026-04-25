@@ -44,7 +44,7 @@ export class AuthService {
     @InjectQueue('email') private readonly emailQueue: Queue,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, ipAddress?: string, userAgent?: string) {
     const existing = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -61,32 +61,36 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const role = dto.role ?? 'BUYER';
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        phoneNumber: dto.phoneNumber ?? null,
-        passwordHash,
-        role: role as any,
-        phoneVerified: false,
-      },
-      select: { id: true, email: true, role: true, phoneNumber: true },
+    // DPDP Act §6: record T&C and Privacy Policy consent at registration
+    const POLICY_VERSION = 'v2024.1';
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: dto.email,
+          phoneNumber: dto.phoneNumber ?? null,
+          passwordHash,
+          role: role as any,
+          phoneVerified: false,
+        },
+        select: { id: true, email: true, role: true, phoneNumber: true },
+      });
+
+      await (tx as any).consentRecord.createMany({
+        data: [
+          { userId: created.id, consentType: 'ESSENTIAL', version: POLICY_VERSION, ipAddress: ipAddress ?? null, userAgent: userAgent ?? null },
+          { userId: created.id, consentType: 'DATA_SHARING', version: POLICY_VERSION, ipAddress: ipAddress ?? null, userAgent: userAgent ?? null },
+        ],
+      });
+
+      if (created.role === 'BUYER') {
+        await tx.buyer.create({
+          data: { userId: created.id, businessType: 'CONSUMER' as any },
+        });
+      }
+
+      return created;
     });
 
-    // Auto-create buyer profile
-    if (user.role === 'BUYER') {
-      await this.prisma.buyer.create({
-        data: { userId: user.id, businessType: 'CONSUMER' as any },
-      });
-    }
-
-    // Send OTP if phone provided
-    if (user.phoneNumber) {
-      await this.sendOtp(user.id, user.phoneNumber);
-      this.logger.log(`OTP queued for new user: ${user.email}`);
-      return { userId: user.id, message: `OTP sent to ${this.maskPhone(user.phoneNumber)}` };
-    }
-
-    // No phone — skip OTP, issue tokens directly
     const tokens = await this.issueTokens(user.id, user.email, user.role);
     return { ...tokens, user: { id: user.id, email: user.email, role: user.role } };
   }
@@ -131,6 +135,9 @@ export class AuthService {
     }
 
     this.logger.log(`User logged in: ${user.email}`);
+    // Fire-and-forget: record last login timestamp for "New Leads Only" filter
+    this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+      .catch(() => undefined);
     const tokens = await this.issueTokens(user.id, user.email, user.role);
     return { ...tokens, user: { id: user.id, email: user.email, role: user.role } };
   }

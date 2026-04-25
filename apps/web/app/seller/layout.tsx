@@ -109,7 +109,7 @@ export default function SellerLayout({ children }: any) {
     '/seller/dashboard', '/seller/products', '/seller/orders',
     '/seller/wallet', '/seller/analytics', '/seller/profile',
     '/seller/settings', '/seller/support', '/seller/notifications',
-    '/seller/buy-leads',
+    '/seller/buy-leads', '/seller/complaints',
   ];
   const isKycPage =
     pathname.startsWith('/seller/register') ||

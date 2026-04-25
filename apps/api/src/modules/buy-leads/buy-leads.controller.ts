@@ -13,7 +13,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { BuyLeadsService } from './buy-leads.service';
-import { BuyLeadsQueryDto, RevealedLeadsQueryDto } from './dto/buy-leads.dto';
+import { BuyLeadFilterDto, RevealedLeadsQueryDto } from './dto/buy-leads.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
@@ -36,11 +36,33 @@ export class BuyLeadsController {
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 403, description: 'Seller role required' })
   async getLeads(
-    @Query() query: BuyLeadsQueryDto,
+    @Query() query: BuyLeadFilterDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponseDto<any>> {
     const data = await this.buyLeadsService.getLeads(query, user.id);
     return ApiResponseDto.success('Buy leads retrieved', data);
+  }
+
+  /**
+   * GET /api/buy-leads/new-count
+   * Count of open leads posted since the seller's last login (lightweight badge endpoint).
+   */
+  @Get('new-count')
+  @ApiOperation({ summary: 'Count of new leads since seller last login' })
+  async getNewLeadsCount(@CurrentUser() user: any): Promise<ApiResponseDto<any>> {
+    const data = await this.buyLeadsService.getNewLeadsCount(user.id);
+    return ApiResponseDto.success('New leads count retrieved', data);
+  }
+
+  /**
+   * GET /api/buy-leads/filter-categories
+   * Returns categories that have at least one active open buy lead (for filter dropdown).
+   */
+  @Get('filter-categories')
+  @ApiOperation({ summary: 'Active categories with open buy leads' })
+  async getActiveCategories(): Promise<ApiResponseDto<any>> {
+    const data = await this.buyLeadsService.getActiveCategories();
+    return ApiResponseDto.success('Active categories retrieved', data);
   }
 
   /**

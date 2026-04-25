@@ -199,7 +199,7 @@ export default () => ({
   // POSTGRES_URL has connection_limit=1 for pgbouncer/serverless; using it here would cap
   // Prisma's pool to 1 connection and cause timeouts when concurrent queries run (e.g. dashboard).
   database: {
-    url: process.env.DATABASE_URL || process.env.DIRECT_URL || process.env.POSTGRES_URL,
+    url: process.env.DATABASE_URL || process.env.POSTGRES_URL,
   },
   
   // Redis

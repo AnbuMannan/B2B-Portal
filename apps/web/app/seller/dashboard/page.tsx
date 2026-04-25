@@ -174,8 +174,21 @@ export default function SellerDashboardPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 mb-6 text-sm">
-          {error}
+        <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-5 py-4 mb-6">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+          {(error.toLowerCase().includes('kyc') || error.toLowerCase().includes('profile not found')) && (
+            <Link
+              href="/seller/register"
+              className="flex-shrink-0 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium ml-4"
+            >
+              Complete KYC →
+            </Link>
+          )}
         </div>
       )}
 

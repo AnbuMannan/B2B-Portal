@@ -71,11 +71,12 @@ export default function EnquiryModal({ productId, productName }: Props) {
   const selectedChannel = watch('contactChannel');
 
   const handleOpen = () => {
-    if (!session) {
+    const token = session?.accessToken ?? (typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null);
+    if (!token) {
       router.push(`/auth/signin?returnUrl=/product/${productId}`);
       return;
     }
-    setIsOpen(true);
+    router.push('/buyer/requirements/new');
   };
 
   const handleClose = () => {
@@ -123,7 +124,7 @@ export default function EnquiryModal({ productId, productName }: Props) {
           💼 Get Best Quote
         </button>
         <a
-          href="/post-requirement"
+          href="/buyer/requirements/new"
           className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-lg text-sm font-semibold text-blue-700 border border-blue-600 hover:bg-blue-50 transition-colors"
         >
           📋 Post Buy Requirement

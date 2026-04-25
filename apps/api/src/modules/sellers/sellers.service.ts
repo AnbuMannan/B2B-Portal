@@ -29,7 +29,7 @@ export class SellersService {
       select: {
         id: true, companyName: true, companyType: true,
         city: true, state: true, isVerified: true,
-        gstNumber: true, iecCode: true, kycStatus: true, createdAt: true,
+        hasIEC: true, kycStatus: true, createdAt: true,
       },
     });
 
@@ -70,9 +70,9 @@ export class SellersService {
     ]);
 
     const badges: string[] = [];
-    if (seller.isVerified)  badges.push('VERIFIED_SELLER');
-    if (seller.gstNumber)   badges.push('GST_VERIFIED');
-    if (seller.iecCode)     badges.push('IEC_GLOBAL');
+    if (seller.isVerified) badges.push('VERIFIED_SELLER');
+    if (seller.isVerified) badges.push('GST_VERIFIED');
+    if (seller.hasIEC)     badges.push('IEC_GLOBAL');
 
     const yearsInBusiness = Math.max(
       1,
@@ -86,7 +86,7 @@ export class SellersService {
     const cataloguePreview = (products as any[]).map((p) => ({
       id: p.id,
       name: p.name,
-      images: p.images,
+      images: this.toAbsoluteUrls(p.images),
       multiTierPricing: p.multiTierPricing,
       categoryName: p.categories[0]?.category?.name ?? '',
     }));
@@ -146,7 +146,7 @@ export class SellersService {
     const data = (products as any[]).map((p) => ({
       id: p.id,
       name: p.name,
-      images: p.images,
+      images: this.toAbsoluteUrls(p.images),
       multiTierPricing: p.multiTierPricing,
       categoryName: p.categories[0]?.category?.name ?? '',
     }));
@@ -183,8 +183,7 @@ export class SellersService {
           city: true,
           state: true,
           isVerified: true,
-          gstNumber: true,
-          iecCode: true,
+          hasIEC: true,
           createdAt: true,
           _count: {
             select: {
@@ -198,8 +197,8 @@ export class SellersService {
     const data: SellerListItemDto[] = (sellers as any[]).map((s) => {
       const badges: string[] = [];
       if (s.isVerified) badges.push('VERIFIED_SELLER');
-      if (s.gstNumber)  badges.push('GST_VERIFIED');
-      if (s.iecCode)    badges.push('IEC_GLOBAL');
+      if (s.isVerified) badges.push('GST_VERIFIED');
+      if (s.hasIEC)     badges.push('IEC_GLOBAL');
 
       return {
         id: s.id,
@@ -236,6 +235,15 @@ export class SellersService {
     await this.redis.pfAdd(hllKey, visitorId);
     // Expire after 35 days so old daily buckets auto-clean
     await this.redis.expire(hllKey, 35 * 24 * 3600);
+  }
+
+  private toAbsoluteUrls(images: any): string[] {
+    if (!Array.isArray(images)) return [];
+    const base = process.env.BACKEND_URL ?? 'http://localhost:4001';
+    return images.map((p: string) => {
+      if (!p || p.startsWith('http://') || p.startsWith('https://')) return p;
+      return `${base}${p.startsWith('/') ? '' : '/'}${p}`;
+    });
   }
 
   /** Approximate unique profile views for a seller over the last N days */

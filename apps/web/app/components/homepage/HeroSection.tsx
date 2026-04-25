@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Package, Users, TrendingUp, Search } from 'lucide-react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 
 type SearchType = 'products' | 'suppliers' | 'buy-leads'
 
@@ -35,6 +36,8 @@ const fallbackTrustMetrics: TrustMetric[] = [
 
 export function HeroSection() {
   const router = useRouter()
+  const t = useTranslations('hero')
+  const tNav = useTranslations('nav')
   const [searchType, setSearchType] = useState<SearchType>('products')
   const [query, setQuery] = useState('')
 
@@ -57,12 +60,6 @@ export function HeroSection() {
     ? data.data.trustMetrics
     : fallbackTrustMetrics
 
-  const placeholderMap: Record<SearchType, string> = {
-    products: 'Search for products, SKUs, or categories',
-    suppliers: 'Search for verified suppliers, manufacturers, or exporters',
-    'buy-leads': 'Search active buy leads by product or location',
-  }
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = query.trim()
@@ -72,7 +69,7 @@ export function HeroSection() {
     } else if (searchType === 'suppliers') {
       router.push(`/search?q=${encodeURIComponent(trimmed)}&type=suppliers`)
     } else {
-      router.push(`/post-requirement`)
+      router.push(`/buyer/requirements/new`)
     }
   }
 
@@ -88,10 +85,10 @@ export function HeroSection() {
           <div className="space-y-8">
             <div className="space-y-4">
               <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-                Connect with B2B Sellers Across India
+                {t('title')}
               </h1>
               <p className="text-lg text-blue-100">
-                Verified GST, IEC, MSME sellers. Find trusted suppliers and grow your business on India&apos;s leading B2B marketplace.
+                {t('subtitle')}
               </p>
             </div>
 
@@ -120,7 +117,7 @@ export function HeroSection() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     type="text"
-                    placeholder={placeholderMap[searchType]}
+                    placeholder={t('searchPlaceholder')}
                     className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-gray-400"
                   />
                 </div>
@@ -129,7 +126,7 @@ export function HeroSection() {
                   className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-blue-700 focus-visible:ring-white"
                 >
                   <Search className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Search
+                  {t('searchButton')}
                 </button>
               </div>
             </form>
@@ -143,12 +140,12 @@ export function HeroSection() {
             <div className="flex flex-wrap gap-4 pt-4">
               <Link href="/browse-categories">
                 <button className="rounded-lg bg-white px-8 py-4 text-base font-semibold text-blue-600 shadow-lg transition hover:bg-blue-50">
-                  Browse Products
+                  {tNav('products')}
                 </button>
               </Link>
-              <Link href="/post-requirement">
+              <Link href="/buyer/requirements/new">
                 <button className="rounded-lg border-2 border-white px-8 py-4 text-base font-semibold text-white transition hover:bg-white/10">
-                  Post Your Requirement
+                  {tNav('postRequirement')}
                 </button>
               </Link>
             </div>

@@ -90,13 +90,14 @@ export class ProductsService {
       verificationBadges: query.verificationBadges,
     };
 
-    // Verify category exists
-    const category = await this.prisma.category.findUnique({
-      where: { id: categoryId },
-    });
-
-    if (!category) {
-      throw new NotFoundException(`Category with ID ${categoryId} not found`);
+    // Skip category lookup when browsing all products (empty categoryId)
+    if (categoryId) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: categoryId },
+      });
+      if (!category) {
+        throw new NotFoundException(`Category with ID ${categoryId} not found`);
+      }
     }
 
     // Build where clause for filtering
@@ -485,6 +486,25 @@ export class ProductsService {
     });
   }
 
+  // All possible JSONB key names used across different product creation flows
+  private readonly PRICE_TIER_KEYS = [
+    'retail', 'wholesale', 'bulk',
+    'RETAIL', 'WHOLESALE', 'BULK',
+    'Retail', 'Wholesale', 'Bulk',
+    'tier1', 'tier2', 'tier3',
+  ];
+
+  private buildPriceRangeFilter(priceMin: number, priceMax: number): any {
+    return {
+      OR: this.PRICE_TIER_KEYS.map(key => ({
+        AND: [
+          { multiTierPricing: { path: [key, 'price'], gte: priceMin } },
+          { multiTierPricing: { path: [key, 'price'], lte: priceMax } },
+        ],
+      })),
+    };
+  }
+
   private buildWhereClause(categoryId: string, filters?: any) {
     const where: any = {
       isActive: true,
@@ -492,91 +512,48 @@ export class ProductsService {
     };
 
     if (categoryId) {
-      where.categories = {
-        some: {
-          categoryId,
-        },
-      };
+      where.categories = { some: { categoryId } };
     }
 
     if (filters) {
-      // Price filtering
+      // Price: match any single tier whose price falls within [min, max]
       if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
-        // For JSONB filtering, we need to check all tiers 
-        // This query checks if any tier's price falls within the range 
-        //const priceConditions = [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const priceConditions: any[] = [];
-
-        if (filters.priceMin !== undefined) {
-          priceConditions.push({
-            OR: [
-              { multiTierPricing: { path: ['RETAIL', 'price'], gte: filters.priceMin } },
-              { multiTierPricing: { path: ['WHOLESALE', 'price'], gte: filters.priceMin } },
-              { multiTierPricing: { path: ['BULK', 'price'], gte: filters.priceMin } },
-            ],
-          });
-        }
-
-        if (filters.priceMax !== undefined) {
-          priceConditions.push({
-            OR: [
-              { multiTierPricing: { path: ['RETAIL', 'price'], lte: filters.priceMax } },
-              { multiTierPricing: { path: ['WHOLESALE', 'price'], lte: filters.priceMax } },
-              { multiTierPricing: { path: ['BULK', 'price'], lte: filters.priceMax } },
-            ],
-          });
-        }
-
-        if (priceConditions.length > 0) {
-          where.AND = priceConditions;
-        }
+        const min = filters.priceMin ?? 0;
+        const max = filters.priceMax ?? 10000000;
+        where.AND = [this.buildPriceRangeFilter(min, max)];
       }
 
-      // State filtering
+      // Seller relation conditions — merged progressively
+      const sellerWhere: any = {};
+
       if (filters.state) {
-        where.seller = {
-          state: filters.state,
-        };
+        sellerWhere.state = filters.state;
       }
 
-      // Verified sellers only
       if (filters.verifiedOnly) {
-        where.seller = {
-          ...where.seller,
-          isVerified: true,
-        };
+        sellerWhere.isVerified = true;
       }
 
-      // IEC Global filtering
       if (filters.iecGlobal) {
-        where.seller = {
-          ...where.seller,
-          iecCode: { not: null },
-        };
+        sellerWhere.iecCode = { not: null };
       }
 
-      // Seller types filtering
+      // businessModel holds MANUFACTURER/WHOLESALER/DISTRIBUTOR/RETAILER
       if (filters.sellerTypes && filters.sellerTypes.length > 0) {
-        where.seller = {
-          ...where.seller,
-          companyType: { in: filters.sellerTypes as any },
+        sellerWhere.businessModel = {
+          in: filters.sellerTypes.map((t: string) => t.toUpperCase()),
         };
       }
 
-      // Verification badges filtering
       if (filters.verificationBadges && filters.verificationBadges.length > 0) {
-        const badgeConditions: any = {};
         const badges = filters.verificationBadges.map((b: string) => b.toLowerCase());
-        if (badges.some((b: string) => b.includes('gst'))) {
-          badgeConditions.gstNumber = { not: null };
-        }
-        if (badges.some((b: string) => b.includes('iec'))) {
-          badgeConditions.iecCode = { not: null };
-        }
-        if (Object.keys(badgeConditions).length > 0) {
-          where.seller = { ...where.seller, ...badgeConditions };
-        }
+        if (badges.some((b: string) => b.includes('gst'))) sellerWhere.gstNumber = { not: null };
+        if (badges.some((b: string) => b.includes('iec'))) sellerWhere.iecCode = { not: null };
+        if (badges.some((b: string) => b.includes('msme'))) sellerWhere.udyamNumber = { not: null };
+      }
+
+      if (Object.keys(sellerWhere).length > 0) {
+        where.seller = sellerWhere;
       }
     }
 
@@ -642,18 +619,25 @@ export class ProductsService {
     }));
   }
 
+  private toAbsoluteUrl(path: string): string {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    const base = process.env.BACKEND_URL ?? 'http://localhost:4001';
+    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+  }
+
   private extractPrimaryImage(images: any): string {
     if (!images || !Array.isArray(images) || images.length === 0) {
       return '';
     }
-    return images[0];
+    return this.toAbsoluteUrl(images[0]);
   }
 
   private extractAllImages(images: any): string[] {
     if (!images || !Array.isArray(images)) {
       return [];
     }
-    return images;
+    return images.map((img: string) => this.toAbsoluteUrl(img));
   }
 
   private getVerificationBadges(seller: any): string[] {
