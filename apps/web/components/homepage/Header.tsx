@@ -63,7 +63,7 @@ const Header = () => {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-white/90 dark:bg-gray-950/90 backdrop-blur-md overflow-hidden">
+    <header className="sticky top-0 z-50 border-b border-border bg-white/90 dark:bg-gray-950/90 backdrop-blur-md">
       <nav
         className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 lg:px-8"
         aria-label="Main navigation"
