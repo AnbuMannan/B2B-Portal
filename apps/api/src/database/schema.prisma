@@ -101,6 +101,7 @@ enum OrderStatus {
   ACCEPTED
   REJECTED
   FULFILLED
+  DELIVERED
   CANCELLED
 }
 

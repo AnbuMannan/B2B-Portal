@@ -10,10 +10,11 @@ import * as crypto from 'crypto';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { v4 as uuidv4 } from 'uuid';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/database.service';
 import { RedisService } from '../../services/redis/redis.service';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
-import { BuyLeadFilterDto, RevealedLeadsQueryDto } from './dto/buy-leads.dto';
+import { BuyLeadFilterDto, RevealedLeadsQueryDto, SubmitQuoteDto } from './dto/buy-leads.dto';
 
 @Injectable()
 export class BuyLeadsService {
@@ -128,10 +129,16 @@ export class BuyLeadsService {
     }
 
     // ── 2. Country filter ───────────────────────────────────────────────────
+    // null expectedCountry is treated as 'India' (see maskLead), so domestic
+    // must include nulls and international must exclude them.
     if (query.country) {
       if (query.country === 'domestic') {
-        where.expectedCountry = { contains: 'India', mode: 'insensitive' };
+        where.OR = [
+          { expectedCountry: { contains: 'India', mode: 'insensitive' } },
+          { expectedCountry: null },
+        ];
       } else if (query.country === 'international') {
+        where.expectedCountry = { not: null };
         where.NOT = { expectedCountry: { contains: 'India', mode: 'insensitive' } };
       } else {
         where.expectedCountry = { contains: query.country, mode: 'insensitive' };
@@ -490,19 +497,35 @@ export class BuyLeadsService {
   async getMatchedLeads(userId: string, page: number, limit: number) {
     const seller = await this.getVerifiedSeller(userId);
 
-    // Collect category IDs from seller's APPROVED active products
+    // Collect category IDs AND product names from seller's APPROVED active products
     const products = await this.prisma.product.findMany({
       where: { sellerId: seller.id, adminApprovalStatus: 'APPROVED', isActive: true },
-      select: { categories: { select: { categoryId: true } } },
+      select: { name: true, categories: { select: { categoryId: true } } },
     });
+
+    if (products.length === 0) {
+      return { leads: [], total: 0, page, limit, totalPages: 0, hasCategories: false };
+    }
 
     const categoryIds = [
       ...new Set(products.flatMap((p) => p.categories.map((c) => c.categoryId))),
     ];
 
-    if (categoryIds.length === 0) {
-      return { leads: [], total: 0, page, limit, totalPages: 0, hasCategories: false };
-    }
+    // Extract keywords from product names (min 3 chars, skip generic stop words)
+    const STOP = new Set(['and', 'the', 'for', 'with', 'from', 'per', 'set', 'box', 'pack', 'lot', 'each', 'new']);
+    const nameKeywords = [
+      ...new Set(
+        products.flatMap((p) =>
+          p.name
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .split(/\s+/)
+            .filter((w) => w.length >= 3 && !STOP.has(w)),
+        ),
+      ),
+    ];
+    // Wrap each keyword as a LIKE pattern
+    const namePatterns = nameKeywords.map((k) => `%${k}%`);
 
     const cacheKey = `seller:leads:${seller.id}:${page}:${limit}`;
     const cached = await this.redis.get<any>(cacheKey);
@@ -511,7 +534,6 @@ export class BuyLeadsService {
     const now = new Date();
     const skip = (page - 1) * limit;
 
-    // Raw query: CASE WHEN for "expiring soon" pinning — not achievable cleanly via Prisma orderBy
     type RawLead = {
       id: string; productName: string; quantity: any; unit: string | null;
       quantityRequired: number | null; expectedCountry: string | null;
@@ -520,23 +542,32 @@ export class BuyLeadsService {
       categoryId: string | null;
     };
 
+    // Match by category (exact) OR product name keyword (ILIKE ANY)
+    const categoryClause = categoryIds.length > 0
+      ? Prisma.sql`"categoryId" = ANY(${categoryIds}::text[])`
+      : Prisma.sql`FALSE`;
+
+    const nameClause = namePatterns.length > 0
+      ? Prisma.sql`"productName" ILIKE ANY(${namePatterns}::text[])`
+      : Prisma.sql`FALSE`;
+
+    const baseWhere = Prisma.sql`
+      (${categoryClause} OR ${nameClause})
+      AND "isOpen" = true
+      AND "deletedAt" IS NULL
+      AND ("expiryDate" IS NULL OR "expiryDate" > ${now})
+    `;
+
     const [countResult, leads] = await Promise.all([
       this.prisma.$queryRaw<[{ count: bigint }]>`
-        SELECT COUNT(*) AS count FROM "BuyLead"
-        WHERE "categoryId" = ANY(${categoryIds}::text[])
-          AND "isOpen" = true
-          AND "deletedAt" IS NULL
-          AND ("expiryDate" IS NULL OR "expiryDate" > ${now})
+        SELECT COUNT(*) AS count FROM "BuyLead" WHERE ${baseWhere}
       `,
       this.prisma.$queryRaw<RawLead[]>`
         SELECT id, "productName", quantity, unit, "quantityRequired",
                "expectedCountry", "contactChannel", "repeatOption",
                "isOpen", "createdAt", "expiryDate", "expiresAt", "categoryId"
         FROM "BuyLead"
-        WHERE "categoryId" = ANY(${categoryIds}::text[])
-          AND "isOpen" = true
-          AND "deletedAt" IS NULL
-          AND ("expiryDate" IS NULL OR "expiryDate" > ${now})
+        WHERE ${baseWhere}
         ORDER BY
           CASE WHEN "expiryDate" IS NOT NULL
                 AND "expiryDate" < (${now}::timestamptz + INTERVAL '2 days')
@@ -818,6 +849,90 @@ export class BuyLeadsService {
         requestId: uuidv4(),
       }).catch(() => undefined);
     }
+  }
+
+  // ─── Submit a quote against a revealed buy lead ───────────────────────────
+
+  async submitQuote(userId: string, leadId: string, dto: SubmitQuoteDto) {
+    const seller = await this.getVerifiedSeller(userId);
+
+    // Seller must have revealed this lead first
+    const reveal = await this.prisma.leadContactReveal.findFirst({
+      where: { sellerId: seller.id, buyLeadId: leadId },
+    });
+    if (!reveal) {
+      throw new ForbiddenException('Reveal the lead contact before submitting a quote.');
+    }
+
+    const lead = await this.prisma.buyLead.findFirst({
+      where: { id: leadId, isOpen: true, deletedAt: null },
+      include: { buyer: { select: { id: true, userId: true } } },
+    });
+    if (!lead) throw new NotFoundException('Buy lead not found or is no longer open.');
+
+    // Prevent duplicate PENDING quotes from the same seller on the same lead
+    const existing = await this.prisma.quote.findFirst({
+      where: { sellerId: seller.id, buyLeadId: leadId, status: 'PENDING' },
+    });
+    if (existing) {
+      throw new BadRequestException('You already have a pending quote for this lead.');
+    }
+
+    const expiresAt = new Date(Date.now() + (dto.validDays ?? 7) * 24 * 3600 * 1000);
+
+    // Create order (QUOTED status) then attach the quote record
+    const order = await this.prisma.order.create({
+      data: {
+        buyerId: lead.buyer.id,
+        sellerId: seller.id,
+        productId: dto.productId ?? null,
+        status: 'QUOTED' as any,
+        quotedPrice: dto.quotedPrice,
+      },
+    });
+
+    const quote = await this.prisma.quote.create({
+      data: {
+        orderId: order.id,
+        sellerId: seller.id,
+        buyLeadId: leadId,
+        productId: dto.productId ?? null,
+        quotedPrice: dto.quotedPrice,
+        leadTime: dto.leadTime ?? null,
+        notes: dto.notes ?? null,
+        expiresAt,
+      },
+      select: { id: true, quotedPrice: true, leadTime: true, notes: true, expiresAt: true, status: true },
+    });
+
+    // Auto-mark reveal as converted
+    await this.prisma.leadContactReveal.update({
+      where: { id: reveal.id },
+      data: { convertedToOrder: true, convertedAt: new Date() },
+    }).catch(() => undefined);
+
+    // Notify buyer
+    await this.prisma.notification.create({
+      data: {
+        userId: lead.buyer.userId,
+        type: 'QUOTE_RECEIVED',
+        title: `New quote for "${lead.productName}"`,
+        body: `${seller.companyName} has sent you a quote of ₹${dto.quotedPrice.toLocaleString('en-IN')}`,
+        isRead: false,
+        metadata: { quoteId: quote.id, leadId },
+      },
+    }).catch(() => undefined);
+
+    this.notificationsQueue.add('quote-received', {
+      buyerUserId: lead.buyer.userId,
+      sellerName: seller.companyName,
+      productName: lead.productName,
+      quotedPrice: dto.quotedPrice,
+      quoteId: quote.id,
+      requestId: uuidv4(),
+    }).catch(() => undefined);
+
+    return { quoteId: quote.id, orderId: order.id, ...quote };
   }
 
   // ─── Module 12: Conversion rate stat ─────────────────────────────────────

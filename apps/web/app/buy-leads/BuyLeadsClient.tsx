@@ -191,7 +191,10 @@ export function BuyLeadsClient({ hideShell = false }: { hideShell?: boolean }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('active');
+  const tabParam = searchParams.get('tab') as ActiveTab | null;
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    tabParam && ['active', 'matched', 'saved', 'revealed'].includes(tabParam) ? tabParam : 'active',
+  );
   const [leads, setLeads] = useState<BuyLead[]>([]);
   const [matchedLeads, setMatchedLeads] = useState<BuyLead[]>([]);
   const [matchedTotal, setMatchedTotal] = useState(0);

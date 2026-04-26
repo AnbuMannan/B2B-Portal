@@ -8,9 +8,10 @@ import {
 import { PrismaService } from '../../../database/database.service';
 import { RazorpayService } from '../../../services/payment/razorpay.service';
 import { RedisService } from '../../../services/redis/redis.service';
-import { VerifyOrderPaymentDto } from './dto/order.dto';
+import { MarkPaidDto, VerifyOrderPaymentDto } from './dto/order.dto';
 
-const PLATFORM_FEE_RATE = 0.15;
+// Fulfillment is off-platform; no facilitation fee charged
+const PLATFORM_FEE_RATE = 0;
 
 @Injectable()
 export class OrdersService {
@@ -60,7 +61,7 @@ export class OrdersService {
           quotes: {
             orderBy: { createdAt: 'desc' },
             take: 1,
-            select: { leadTime: true, notes: true },
+            select: { leadTime: true, notes: true, buyLead: { select: { productName: true } } },
           },
         },
       }),
@@ -105,6 +106,7 @@ export class OrdersService {
         seller: {
           select: {
             id: true,
+            userId: true,
             companyName: true,
             isVerified: true,
             city: true,
@@ -122,6 +124,7 @@ export class OrdersService {
             leadTime: true,
             notes: true,
             status: true,
+            buyLead: { select: { productName: true } },
             negotiations: {
               orderBy: { createdAt: 'asc' },
               select: {
@@ -150,17 +153,20 @@ export class OrdersService {
         : Math.round(basePrice * PLATFORM_FEE_RATE * 100) / 100;
     const totalPayable = basePrice + platformFee;
 
+    const leadProductName = (order as any).quotes?.[0]?.buyLead?.productName ?? null;
+    const product = (order as any).product ?? (leadProductName ? { id: null, name: leadProductName, hsnCode: null } : null);
+
     return {
       ...this.formatOrder(order),
       seller: order.seller,
-      product: order.product,
+      product,
       buyer: order.buyer,
       quote: order.quotes[0] ?? null,
       pricing: {
         basePrice,
-        platformFacilitationFee: platformFee,
-        platformFeePercent: 15,
-        totalPayable,
+        platformFacilitationFee: 0,
+        platformFeePercent: 0,
+        totalPayable: basePrice,
         currency: 'INR',
       },
     };
@@ -271,6 +277,38 @@ export class OrdersService {
     return { success: true };
   }
 
+  // ── POST /api/buyer/orders/:orderId/mark-paid ─────────────────────────────
+
+  async markPaid(userId: string, orderId: string, dto: MarkPaidDto) {
+    const buyer = await this.getBuyer(userId);
+
+    const order = await (this.prisma.order as any).findFirst({
+      where: { id: orderId, buyerId: buyer.id, deletedAt: null },
+      select: { id: true, status: true, paymentStatus: true },
+    });
+
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'ACCEPTED') {
+      throw new BadRequestException('Only ACCEPTED orders can be marked as paid');
+    }
+    if (order.paymentStatus === 'COMPLETED') {
+      return { alreadyPaid: true };
+    }
+
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paymentStatus: 'COMPLETED',
+        paymentMethod: 'OFFLINE',
+        ...(dto.receiptUrl ? { razorpayPaymentId: dto.receiptUrl } : {}),
+      },
+    });
+
+    await this.redis.delete(`buyer:dashboard:${userId}`);
+    this.logger.log(`Order ${orderId} marked PAID (offline) by buyer ${buyer.id}`);
+    return { success: true };
+  }
+
   // ── POST /api/buyer/orders/:orderId/confirm-delivery ──────────────────────
 
   async confirmDelivery(userId: string, orderId: string) {
@@ -282,21 +320,21 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'FULFILLED') {
-      return { alreadyFulfilled: true };
+    if (order.status === 'DELIVERED') {
+      return { alreadyDelivered: true };
     }
-    if (order.status !== 'ACCEPTED') {
-      throw new BadRequestException('Only ACCEPTED orders can be confirmed as delivered');
+    if (order.status !== 'FULFILLED') {
+      throw new BadRequestException('Delivery can only be confirmed after the seller marks the order as fulfilled');
     }
 
     await this.prisma.order.update({
       where: { id: orderId },
-      data: { status: 'FULFILLED' },
+      data: { status: 'DELIVERED' },
     });
 
     await this.redis.delete(`buyer:dashboard:${userId}`);
-    this.logger.log(`Order ${orderId} marked FULFILLED by buyer ${buyer.id}`);
-    return { fulfilled: true };
+    this.logger.log(`Order ${orderId} marked DELIVERED by buyer ${buyer.id}`);
+    return { delivered: true };
   }
 
   // ── PATCH /api/seller/orders/:orderId/fulfill ──────────────────────────────
@@ -314,7 +352,7 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'FULFILLED') return { alreadyFulfilled: true };
+    if (order.status === 'FULFILLED' || order.status === 'DELIVERED') return { alreadyFulfilled: true };
     if (order.status !== 'ACCEPTED') {
       throw new BadRequestException('Only ACCEPTED orders can be marked as fulfilled');
     }
@@ -336,6 +374,8 @@ export class OrdersService {
       o.platformFacilitationFee != null
         ? Number(o.platformFacilitationFee)
         : Math.round(basePrice * PLATFORM_FEE_RATE * 100) / 100;
+    const productName =
+      o.product?.name ?? o.quotes?.[0]?.buyLead?.productName ?? 'N/A';
     return {
       id: o.id,
       status: o.status,
@@ -347,8 +387,8 @@ export class OrdersService {
       sellerName: o.seller?.companyName ?? 'Unknown',
       sellerId: o.seller?.id,
       sellerVerified: o.seller?.isVerified ?? false,
-      productName: o.product?.name ?? 'N/A',
-      productId: o.product?.id,
+      productName,
+      productId: o.product?.id ?? null,
       createdAt: o.createdAt,
     };
   }

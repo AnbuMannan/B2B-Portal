@@ -76,6 +76,20 @@ export class SellerDashboardController {
     return ApiResponseDto.success('Orders fetched', data);
   }
 
+  @Get('lead-reveals')
+  @Roles('SELLER')
+  @ApiOperation({ summary: 'Get paginated list of buyer contact reveals for this seller' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  async getLeadReveals(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ): Promise<ApiResponseDto<any>> {
+    const data = await this.dashboardService.getLeadReveals(user.id, page, limit);
+    return ApiResponseDto.success('Lead reveals fetched', data);
+  }
+
   @Patch('orders/:id/status')
   @HttpCode(HttpStatus.OK)
   @Roles('SELLER')

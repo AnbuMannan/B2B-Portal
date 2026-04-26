@@ -291,22 +291,68 @@ export class SellerDashboardService {
           updatedAt: true,
           product: { select: { id: true, name: true } },
           buyer: { select: { id: true, user: { select: { email: true, phoneNumber: true } } } },
+          quotes: {
+            orderBy: { createdAt: 'desc' as const },
+            take: 1,
+            select: {
+              buyLead: { select: { productName: true } },
+            },
+          },
         },
       }),
       this.prisma.order.count({ where }),
     ]);
 
     return {
-      items: items.map((o: any) => ({
-        ...o,
-        finalPrice: o.finalPrice ? Number(o.finalPrice) : null,
-        quotedPrice: o.quotedPrice ? Number(o.quotedPrice) : null,
-        buyerMasked: this.maskEmail(o.buyer?.user?.email ?? ''),
-      })),
+      items: items.map((o: any) => {
+        const productName = o.product?.name ?? o.quotes?.[0]?.buyLead?.productName ?? null;
+        return {
+          ...o,
+          product: o.product ?? (productName ? { id: null, name: productName } : null),
+          finalPrice: o.finalPrice ? Number(o.finalPrice) : null,
+          quotedPrice: o.quotedPrice ? Number(o.quotedPrice) : null,
+          buyerMasked: this.maskEmail(o.buyer?.user?.email ?? ''),
+        };
+      }),
       total,
       page,
       limit,
     };
+  }
+
+  async getLeadReveals(userId: string, page: number, limit: number) {
+    const seller = await this.prisma.seller.findFirst({ where: { userId } });
+    if (!seller) throw new NotFoundException('Seller profile not found');
+
+    const skip = (page - 1) * limit;
+    const where = { sellerId: seller.id };
+
+    const [items, total] = await Promise.all([
+      this.prisma.leadContactReveal.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          creditDeducted: true,
+          convertedToOrder: true,
+          convertedAt: true,
+          buyLead: {
+            select: {
+              id: true,
+              productName: true,
+              quantity: true,
+              deliveryState: true,
+            },
+          },
+        },
+      }),
+      this.prisma.leadContactReveal.count({ where }),
+    ]);
+
+    return { items, total, page, limit };
   }
 
   async updateOrderStatus(userId: string, orderId: string, newStatus: string) {
@@ -321,7 +367,7 @@ export class SellerDashboardService {
     const order = await this.prisma.order.findFirst({ where: { id: orderId, sellerId: seller.id, deletedAt: null } });
     if (!order) throw new NotFoundException('Order not found');
 
-    if (order.status === 'FULFILLED' || order.status === 'CANCELLED') {
+    if (['FULFILLED', 'DELIVERED', 'CANCELLED'].includes(order.status as string)) {
       throw new BadRequestException('Cannot update a completed or cancelled order');
     }
 

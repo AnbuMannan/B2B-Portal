@@ -174,5 +174,36 @@ export class PaginationQueryDto {
   limit?: number = 20;
 }
 
+export class SubmitQuoteDto {
+  @ApiProperty({ example: 15000, description: 'Quoted price in INR' })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  quotedPrice!: number;
+
+  @ApiProperty({ required: false, example: '5-7 business days' })
+  @IsOptional()
+  @IsString()
+  leadTime?: string;
+
+  @ApiProperty({ required: false, example: 'Includes GST and delivery to buyer state' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiProperty({ required: false, description: 'Seller product ID to attach to this quote' })
+  @IsOptional()
+  @IsString()
+  productId?: string;
+
+  @ApiProperty({ required: false, default: 7, description: 'Days until this quote expires' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(90)
+  validDays?: number = 7;
+}
+
 // Keep old name as alias for backward compat with controller import
 export { BuyLeadFilterDto as BuyLeadsQueryDto };

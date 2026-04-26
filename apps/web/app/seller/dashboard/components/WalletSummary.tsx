@@ -75,7 +75,7 @@ export default function WalletSummary({ wallet }: WalletSummaryProps) {
       )}
 
       <Link
-        href="/seller/wallet/recharge"
+        href="/seller/wallet"
         className="block w-full text-center bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 transition-colors mb-5"
       >
         + Recharge Credits

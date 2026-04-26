@@ -180,6 +180,45 @@ export class UploadController {
     });
   }
 
+  // ─── Payment Receipt Upload (Buyer) ──────────────────────────────────────
+
+  @Post('receipt')
+  @Roles('BUYER')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+        if (allowed.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Only JPG, PNG, WebP, or PDF files are allowed'), false);
+        }
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload payment receipt (buyer, JPG/PNG/PDF, max 10 MB)' })
+  @ApiResponse({ status: 201, description: 'Receipt stored, returns url' })
+  async uploadReceipt(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ApiResponseDto<any>> {
+    if (!file) throw new BadRequestException('No file provided');
+
+    const RECEIPT_DIR = process.env.RECEIPT_UPLOAD_DIR || './uploads/receipts';
+    if (!fs.existsSync(RECEIPT_DIR)) fs.mkdirSync(RECEIPT_DIR, { recursive: true });
+
+    const ext = path.extname(file.originalname).toLowerCase() || '.bin';
+    const filename = `receipt-${uuidv4()}${ext}`;
+    const destPath = path.join(RECEIPT_DIR, filename);
+    fs.writeFileSync(destPath, file.buffer);
+
+    this.logger.log(`Payment receipt uploaded by buyer ${user.id}: ${filename}`);
+    return ApiResponseDto.success('Receipt uploaded', { url: `/receipts/${filename}` });
+  }
+
   // ─── Company Logo Upload ──────────────────────────────────────────────────
 
   @Post('seller/logo')

@@ -1,29 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window !== 'undefined' && window.Razorpay) { resolve(true); return; }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
 
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -31,9 +14,19 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [payLoading, setPayLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Receipt upload state
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Raise request (complaint) state
+  const [showComplaint, setShowComplaint] = useState(false);
+  const [complaint, setComplaint] = useState({ category: 'OTHER', subject: '', description: '' });
+  const [complaintLoading, setComplaintLoading] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -62,53 +55,35 @@ export default function OrderDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadOrder(); }, [orderId]);
 
-  const handlePay = async () => {
+  const handleMarkPaid = async () => {
     const token = localStorage.getItem('accessToken');
     if (!token) return;
-    setPayLoading(true);
+    setUploading(true);
     try {
-      const loaded = await loadRazorpayScript();
-      if (!loaded) { showToast('Razorpay SDK failed to load. Check your connection.'); return; }
+      let receiptUrl: string | undefined;
 
-      const res = await axios.post(`${API_URL}/api/buyer/orders/${orderId}/pay`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const { razorpayOrderId, amount, currency, keyId } = res.data.data;
+      if (receiptFile) {
+        const form = new FormData();
+        form.append('file', receiptFile);
+        const up = await axios.post(`${API_URL}/api/upload/receipt`, form, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+        });
+        receiptUrl = up.data?.data?.url ?? up.data?.url;
+      }
 
-      const options = {
-        key: keyId,
-        amount,
-        currency: currency ?? 'INR',
-        name: 'B2B Marketplace',
-        description: `Order ${orderId.slice(-8).toUpperCase()}`,
-        order_id: razorpayOrderId,
-        handler: async (response: any) => {
-          try {
-            await axios.post(
-              `${API_URL}/api/buyer/orders/${orderId}/verify-payment`,
-              {
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              },
-              { headers: { Authorization: `Bearer ${token}` } },
-            );
-            showToast('Payment successful!');
-            await loadOrder();
-          } catch {
-            showToast('Payment verification failed. Contact support.');
-          }
-        },
-        prefill: {},
-        theme: { color: '#2563EB' },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.open();
+      await axios.post(
+        `${API_URL}/api/buyer/orders/${orderId}/mark-paid`,
+        receiptUrl ? { receiptUrl } : {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      showToast('Payment recorded successfully!');
+      setShowPayModal(false);
+      setReceiptFile(null);
+      await loadOrder();
     } catch (err: any) {
-      showToast(err?.response?.data?.message ?? 'Could not initiate payment');
+      showToast(err?.response?.data?.message ?? 'Could not record payment');
     } finally {
-      setPayLoading(false);
+      setUploading(false);
     }
   };
 
@@ -123,12 +98,46 @@ export default function OrderDetailPage() {
         {},
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      showToast('Order marked as fulfilled!');
+      showToast('Delivery confirmed!');
       await loadOrder();
     } catch (err: any) {
       showToast(err?.response?.data?.message ?? 'Could not confirm delivery');
     } finally {
       setConfirmLoading(false);
+    }
+  };
+
+  const handleRaiseRequest = async () => {
+    if (!complaint.subject.trim() || !complaint.description.trim()) {
+      showToast('Subject and description are required');
+      return;
+    }
+    if (complaint.description.trim().length < 20) {
+      showToast('Description must be at least 20 characters');
+      return;
+    }
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+    setComplaintLoading(true);
+    try {
+      await axios.post(
+        `${API_URL}/api/complaints`,
+        {
+          reportedUserId: order.seller.userId,
+          category: complaint.category,
+          subject: complaint.subject.trim(),
+          description: complaint.description.trim(),
+          orderId: order.id,
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      showToast('Request raised — admin will review and contact you.');
+      setShowComplaint(false);
+      setComplaint({ category: 'OTHER', subject: '', description: '' });
+    } catch (err: any) {
+      showToast(err?.response?.data?.message ?? 'Failed to raise request');
+    } finally {
+      setComplaintLoading(false);
     }
   };
 
@@ -153,7 +162,7 @@ export default function OrderDetailPage() {
 
   const p = order?.pricing ?? {};
   const canPay = order?.status === 'ACCEPTED' && order?.paymentStatus !== 'COMPLETED';
-  const canConfirm = order?.status === 'ACCEPTED' && order?.paymentStatus === 'COMPLETED';
+  const canConfirm = order?.status === 'FULFILLED';
 
   return (
     <div className="p-4 lg:p-6 max-w-3xl mx-auto">
@@ -189,11 +198,10 @@ export default function OrderDetailPage() {
           <div className="flex gap-2 flex-wrap">
             {canPay && (
               <button
-                onClick={handlePay}
-                disabled={payLoading}
-                className="px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                onClick={() => setShowPayModal(true)}
+                className="px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
-                {payLoading ? 'Opening…' : 'Pay Now'}
+                Upload Payment Receipt
               </button>
             )}
             {canConfirm && (
@@ -211,24 +219,14 @@ export default function OrderDetailPage() {
 
       {/* Pricing breakdown */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Price Breakdown</h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Price</h2>
         <dl className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-gray-500">Base price</dt>
-            <dd className="font-medium text-gray-900">₹{Number(p.basePrice ?? 0).toLocaleString('en-IN')}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-500">Platform facilitation fee (15%)</dt>
-            <dd className="font-medium text-gray-900">₹{Number(p.platformFacilitationFee ?? 0).toLocaleString('en-IN')}</dd>
-          </div>
           <div className="border-t border-gray-100 pt-2 flex justify-between">
-            <dt className="font-semibold text-gray-900">Total payable</dt>
-            <dd className="font-bold text-blue-700 text-base">₹{Number(p.totalPayable ?? 0).toLocaleString('en-IN')}</dd>
+            <dt className="font-semibold text-gray-900">Agreed price</dt>
+            <dd className="font-bold text-blue-700 text-base">₹{Number(p.basePrice ?? 0).toLocaleString('en-IN')}</dd>
           </div>
         </dl>
-        <p className="text-xs text-gray-400 mt-3">
-          * Platform facilitation fee is non-refundable. Prices in INR, GST may apply.
-        </p>
+        <p className="text-xs text-gray-400 mt-3">Prices in INR. GST and delivery charges as agreed with seller.</p>
       </div>
 
       {/* Seller + Product */}
@@ -265,11 +263,166 @@ export default function OrderDetailPage() {
         </div>
       )}
 
+      {/* Raise a request — available on any non-cancelled order */}
+      {order.status !== 'CANCELLED' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Have an issue with this order?</p>
+              <p className="text-xs text-gray-400 mt-0.5">Admin will review and get back to you within 24 hours.</p>
+            </div>
+            <button
+              onClick={() => setShowComplaint(true)}
+              className="px-4 py-2 text-sm font-semibold border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 transition"
+            >
+              Raise a Request
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="text-xs text-gray-400 text-center mt-4">
         Order placed {new Date(order.createdAt).toLocaleDateString('en-IN', {
           day: 'numeric', month: 'long', year: 'numeric'
         })}
       </div>
+
+      {/* Payment receipt upload modal */}
+      {showPayModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">Upload Payment Receipt</h2>
+              <button onClick={() => { setShowPayModal(false); setReceiptFile(null); }} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-600">
+                After paying the seller outside this platform, upload your payment proof (screenshot, bank receipt, UPI confirmation etc.) to mark this order as paid.
+              </p>
+
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-blue-400 transition"
+              >
+                {receiptFile ? (
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{receiptFile.name}</p>
+                    <p className="text-xs text-gray-400 mt-1">{(receiptFile.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                ) : (
+                  <div>
+                    <svg className="w-8 h-8 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <p className="text-sm text-gray-500">Click to upload receipt</p>
+                    <p className="text-xs text-gray-400 mt-1">JPG, PNG, PDF up to 10 MB</p>
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+
+              <p className="text-xs text-gray-400">
+                Receipt upload is optional — you can also just click "Mark as Paid" without a file if you have verbal confirmation.
+              </p>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { setShowPayModal(false); setReceiptFile(null); }}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMarkPaid}
+                  disabled={uploading}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
+                >
+                  {uploading ? 'Saving…' : 'Mark as Paid'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complaint modal */}
+      {showComplaint && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">Raise a Request</h2>
+              <button onClick={() => setShowComplaint(false)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
+                <select
+                  value={complaint.category}
+                  onChange={(e) => setComplaint((c) => ({ ...c, category: e.target.value }))}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="PRODUCT_QUALITY">Product Quality</option>
+                  <option value="DELIVERY">Delivery Issue</option>
+                  <option value="PAYMENT">Payment Issue</option>
+                  <option value="FRAUD">Fraud / Scam</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Subject <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={complaint.subject}
+                  onChange={(e) => setComplaint((c) => ({ ...c, subject: e.target.value }))}
+                  placeholder="Brief summary of the issue"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Description <span className="text-red-500">*</span></label>
+                <textarea
+                  rows={4}
+                  maxLength={5000}
+                  value={complaint.description}
+                  onChange={(e) => setComplaint((c) => ({ ...c, description: e.target.value }))}
+                  placeholder="Describe the issue in detail (min 20 characters)"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowComplaint(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRaiseRequest}
+                  disabled={complaintLoading}
+                  className="flex-1 px-4 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50 transition"
+                >
+                  {complaintLoading ? 'Submitting…' : 'Submit Request'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

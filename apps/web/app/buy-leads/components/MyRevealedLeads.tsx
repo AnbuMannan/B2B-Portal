@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import {
   Phone, Mail, MessageCircle, Download, Search, Copy,
-  TrendingUp, CheckCircle2,
+  TrendingUp, CheckCircle2, SendHorizonal, X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { RevealedContact } from '../BuyLeadsClient';
@@ -32,6 +32,15 @@ function copy(text: string) {
   navigator.clipboard.writeText(text).then(() => toast.success('Copied!'));
 }
 
+interface QuoteForm {
+  quotedPrice: string;
+  leadTime: string;
+  notes: string;
+  validDays: string;
+}
+
+const QUOTE_INIT: QuoteForm = { quotedPrice: '', leadTime: '', notes: '', validDays: '7' };
+
 export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
   const [reveals, setReveals] = useState<RevealedContact[]>([]);
   const [total, setTotal] = useState(0);
@@ -41,6 +50,13 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
   const [search, setSearch] = useState('');
   const [conversionRate, setConversionRate] = useState<ConversionRate | null>(null);
   const [convertingIds, setConvertingIds] = useState<Set<string>>(new Set());
+
+  // Quote modal state
+  const [quoteTarget, setQuoteTarget] = useState<RevealedContact | null>(null);
+  const [quoteForm, setQuoteForm] = useState<QuoteForm>(QUOTE_INIT);
+  const [submittingQuote, setSubmittingQuote] = useState(false);
+  // Track which leads already have a quote submitted this session
+  const [quotedLeadIds, setQuotedLeadIds] = useState<Set<string>>(new Set());
 
   const fetchReveals = useCallback(
     async (pageNum = 1, reset = false) => {
@@ -122,6 +138,39 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
     }
   };
 
+  // ── Submit quote ──────────────────────────────────────────────────────────
+
+  const handleSubmitQuote = async () => {
+    if (!accessToken || !quoteTarget) return;
+    const price = Number(quoteForm.quotedPrice);
+    if (!price || price <= 0) { toast.error('Enter a valid price'); return; }
+
+    setSubmittingQuote(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/seller/leads/${quoteTarget.buyLeadId}/quote`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quotedPrice: price,
+          leadTime: quoteForm.leadTime || undefined,
+          notes: quoteForm.notes || undefined,
+          validDays: Number(quoteForm.validDays) || 7,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message ?? 'Failed to submit quote');
+      toast.success('Quote sent to buyer!');
+      setQuotedLeadIds((prev) => new Set([...Array.from(prev), quoteTarget.buyLeadId]));
+      setQuoteTarget(null);
+      setQuoteForm(QUOTE_INIT);
+      fetchConversionRate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to submit quote');
+    } finally {
+      setSubmittingQuote(false);
+    }
+  };
+
   // ── CSV export ────────────────────────────────────────────────────────────
 
   const exportCsv = () => {
@@ -159,7 +208,7 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
   };
 
   return (
-    <div>
+    <div className="relative">
       {/* Conversion rate stat */}
       {conversionRate && conversionRate.totalReveals > 0 && (
         <div className="mb-5 flex items-center gap-3 rounded-xl bg-green-50 border border-green-100 p-4">
@@ -283,19 +332,33 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
                   </div>
                 )}
 
-                {/* Mark as Converted CTA */}
-                {!r.convertedToOrder && (
-                  <div className="mt-3 border-t border-gray-100 pt-3">
+                {/* Actions */}
+                <div className="mt-3 border-t border-gray-100 pt-3 flex items-center gap-4 flex-wrap">
+                  {quotedLeadIds.has(r.buyLeadId) ? (
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-blue-600">
+                      <SendHorizonal className="h-4 w-4" />
+                      Quote sent
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => { setQuoteTarget(r); setQuoteForm(QUOTE_INIT); }}
+                      className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      <SendHorizonal className="h-4 w-4" />
+                      Send Quote
+                    </button>
+                  )}
+                  {!r.convertedToOrder && (
                     <button
                       onClick={() => handleMarkConverted(r)}
                       disabled={convertingIds.has(r.id)}
-                      className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-green-600 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-green-600 transition-colors disabled:opacity-50"
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       {convertingIds.has(r.id) ? 'Saving...' : 'Mark as Converted'}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -313,6 +376,121 @@ export function MyRevealedLeads({ accessToken }: MyRevealedLeadsProps) {
           )}
         </>
       )}
+
+      {/* Quote modal */}
+      {quoteTarget && (
+        <QuoteModal
+          reveal={quoteTarget}
+          form={quoteForm}
+          onChange={setQuoteForm}
+          onSubmit={handleSubmitQuote}
+          onClose={() => { setQuoteTarget(null); setQuoteForm(QUOTE_INIT); }}
+          submitting={submittingQuote}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuoteModal({
+  reveal,
+  form,
+  onChange,
+  onSubmit,
+  onClose,
+  submitting,
+}: {
+  reveal: RevealedContact;
+  form: QuoteForm;
+  onChange: (f: QuoteForm) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+  submitting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Send Quote</h2>
+            <p className="text-xs text-gray-500 mt-0.5 max-w-[280px] truncate">
+              {reveal.lead?.productName ?? 'Buy Lead'}
+              {reveal.lead?.quantity ? ` · ${reveal.lead.quantity} ${reveal.lead.unit ?? ''}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Your price (₹) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={form.quotedPrice}
+              onChange={(e) => onChange({ ...form, quotedPrice: e.target.value })}
+              placeholder="e.g. 15000"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Lead time</label>
+            <input
+              type="text"
+              value={form.leadTime}
+              onChange={(e) => onChange({ ...form, leadTime: e.target.value })}
+              placeholder="e.g. 5–7 business days"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Notes</label>
+            <textarea
+              rows={3}
+              value={form.notes}
+              onChange={(e) => onChange({ ...form, notes: e.target.value })}
+              placeholder="Include GST details, packaging, delivery terms…"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Quote valid for (days)</label>
+            <select
+              value={form.validDays}
+              onChange={(e) => onChange({ ...form, validDays: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              {[3, 7, 14, 30].map((d) => (
+                <option key={d} value={d}>{d} days</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onSubmit}
+              disabled={submitting}
+              className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <SendHorizonal className="h-4 w-4" />
+              {submitting ? 'Sending…' : 'Send Quote'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

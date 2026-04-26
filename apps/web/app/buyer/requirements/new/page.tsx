@@ -61,7 +61,24 @@ export default function PostRequirementPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
   const [successLead, setSuccessLead] = useState<any>(null);
+  const [categories, setCategories] = useState<{ id: string; name: string; parent?: string }[]>([]);
   const autocompleteTimer = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    axios.get(`${API_URL}/api/categories`)
+      .then((res) => {
+        const tree: any[] = res.data?.data ?? [];
+        const flat: { id: string; name: string; parent?: string }[] = [];
+        for (const parent of tree) {
+          flat.push({ id: parent.id, name: parent.name });
+          for (const child of parent.children ?? []) {
+            flat.push({ id: child.id, name: child.name, parent: parent.name });
+          }
+        }
+        setCategories(flat);
+      })
+      .catch(() => { /* non-critical */ });
+  }, []);
 
   useEffect(() => {
     try {
@@ -142,6 +159,7 @@ export default function PostRequirementPage() {
     try {
       const payload: Record<string, any> = {
         productName: form.productName.trim(),
+        categoryId: form.categoryId || undefined,
         requirementType: form.requirementType,
         unit: form.unit || undefined,
         currency: form.currency,
@@ -343,6 +361,26 @@ export default function PostRequirementPage() {
                 </ul>
               )}
             </div>
+
+            {categories.length > 0 && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Category <span className="text-gray-400 font-normal">(helps sellers find you faster)</span>
+                </label>
+                <select
+                  value={form.categoryId ?? ''}
+                  onChange={(e) => update('categoryId', e.target.value || null)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a category (optional)</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.parent ? `${c.parent} › ${c.name}` : c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">

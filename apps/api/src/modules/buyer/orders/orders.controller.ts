@@ -18,7 +18,7 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { ApiResponseDto } from '../../../common/dto/api-response.dto';
 import { OrdersService } from './orders.service';
-import { VerifyOrderPaymentDto } from './dto/order.dto';
+import { MarkPaidDto, VerifyOrderPaymentDto } from './dto/order.dto';
 
 @ApiTags('buyer-orders')
 @ApiBearerAuth()
@@ -80,6 +80,19 @@ export class OrdersController {
   ): Promise<ApiResponseDto<any>> {
     const data = await this.ordersService.verifyPayment(user.id, orderId, dto);
     return ApiResponseDto.success('Payment verified', data);
+  }
+
+  @Post(':orderId/mark-paid')
+  @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  @ApiOperation({ summary: 'Mark order as paid offline (upload receipt)' })
+  async markPaid(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('orderId') orderId: string,
+    @Body() dto: MarkPaidDto,
+  ): Promise<ApiResponseDto<any>> {
+    const data = await this.ordersService.markPaid(user.id, orderId, dto);
+    return ApiResponseDto.success('Order marked as paid', data);
   }
 
   @Post(':orderId/confirm-delivery')

@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Post,
@@ -13,7 +14,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BuyLeadsService } from './buy-leads.service';
-import { PaginationQueryDto } from './dto/buy-leads.dto';
+import { PaginationQueryDto, SubmitQuoteDto } from './dto/buy-leads.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
@@ -122,6 +123,25 @@ export class SellerLeadsController {
     const data = await this.buyLeadsService.saveLead(user.id, leadId);
     const msg = data.saved ? 'Lead saved to watchlist' : 'Lead removed from watchlist';
     return ApiResponseDto.success(msg, data);
+  }
+
+  /**
+   * POST /api/seller/leads/:leadId/quote
+   * Submit a price quote against a revealed buy lead.
+   * Creates Order (QUOTED) + Quote record; notifies the buyer.
+   */
+  @Post('leads/:leadId/quote')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  @ApiOperation({ summary: 'Submit a quote to a buyer for a revealed buy lead' })
+  @ApiResponse({ status: 201, description: 'Quote submitted' })
+  async submitQuote(
+    @Param('leadId') leadId: string,
+    @Body() dto: SubmitQuoteDto,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponseDto<any>> {
+    const data = await this.buyLeadsService.submitQuote(user.id, leadId, dto);
+    return ApiResponseDto.success('Quote submitted successfully', data);
   }
 
   /**

@@ -12,7 +12,8 @@ import { PrismaService } from '../../../database/database.service';
 import { RedisService } from '../../../services/redis/redis.service';
 import { NegotiateQuoteDto } from './dto/quote-actions.dto';
 
-const PLATFORM_FEE_RATE = 0.15;
+// Fulfillment happens outside the platform; no fee charged on buy-lead orders
+const PLATFORM_FEE_RATE = 0;
 
 @Injectable()
 export class QuotesService {
