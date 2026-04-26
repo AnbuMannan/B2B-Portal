@@ -356,9 +356,9 @@ export class SellerDashboardService {
   }
 
   async updateOrderStatus(userId: string, orderId: string, newStatus: string) {
-    const ALLOWED = ['ACCEPTED', 'REJECTED', 'FULFILLED'];
-    if (!ALLOWED.includes(newStatus)) {
-      throw new BadRequestException(`Status must be one of: ${ALLOWED.join(', ')}`);
+    // Sellers may only mark an order FULFILLED — accepting/rejecting quotes is the buyer's job
+    if (newStatus !== 'FULFILLED') {
+      throw new BadRequestException('Sellers can only mark orders as FULFILLED');
     }
 
     const seller = await this.prisma.seller.findFirst({ where: { userId } });
@@ -367,13 +367,16 @@ export class SellerDashboardService {
     const order = await this.prisma.order.findFirst({ where: { id: orderId, sellerId: seller.id, deletedAt: null } });
     if (!order) throw new NotFoundException('Order not found');
 
-    if (['FULFILLED', 'DELIVERED', 'CANCELLED'].includes(order.status as string)) {
-      throw new BadRequestException('Cannot update a completed or cancelled order');
+    if (order.status !== 'ACCEPTED') {
+      throw new BadRequestException('Can only fulfill an order that the buyer has accepted');
+    }
+    if ((order as any).paymentStatus !== 'COMPLETED') {
+      throw new BadRequestException('Cannot fulfill order — buyer payment not yet confirmed');
     }
 
     const updated = await this.prisma.order.update({
       where: { id: orderId },
-      data: { status: newStatus as any },
+      data: { status: 'FULFILLED' as any },
       select: { id: true, status: true, updatedAt: true },
     });
 

@@ -341,17 +341,9 @@ export default function SellerOrdersPage() {
 
               {selected.status === 'QUOTED' && (
                 <div className="border-t border-gray-100 pt-4">
-                  <p className="text-xs text-gray-500 mb-3">Update Order Status</p>
-                  <div className="flex gap-3">
-                    <button onClick={() => updateStatus(selected.id, 'ACCEPTED')} disabled={updating}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                      {updating ? 'Saving…' : 'Accept Order'}
-                    </button>
-                    <button onClick={() => updateStatus(selected.id, 'REJECTED')} disabled={updating}
-                      className="flex-1 px-4 py-2 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors">
-                      Reject
-                    </button>
-                  </div>
+                  <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                    Quote sent to buyer — waiting for buyer to accept or negotiate.
+                  </p>
                 </div>
               )}
 
