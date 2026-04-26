@@ -98,89 +98,50 @@ async function performStartupValidations(app: INestApplication) {
 
   logger.log('Performing startup validations...');
 
+  // 1. Database connection validation
   try {
-    const isDev = (configService.get('app.env') || 'development') === 'development';
-
-    // 1. Database connection validation
-    try {
-      logger.log('Validating database connection...');
-      const databaseService = app.get(DatabaseService);
-      await databaseService.validateConnection();
-      logger.log('✅ Database connection validated');
-    } catch (e: any) {
-      if (isDev) {
-        logger.warn(`Skipping DB validation in development: ${e.message}`);
-      } else {
-        throw e;
-      }
-    }
-
-    // 2. Redis connection validation
-    try {
-      logger.log('Validating Redis connection...');
-      const redisService = app.get(RedisService);
-      await redisService.validateConnection();
-      logger.log('✅ Redis connection validated');
-    } catch (e: any) {
-      logger.warn(`Redis connection failed, continuing without cache: ${e.message}`);
-    }
-
-    // 3. Elasticsearch connection validation (DISABLED - enable when Elasticsearch is available)
-    // try {
-    //   logger.log('Validating Elasticsearch connection...');
-    //   const elasticsearchService = app.get(ElasticsearchService);
-    //   await elasticsearchService.validateConnection();
-    //   logger.log('✅ Elasticsearch connection validated');
-    // } catch (e: any) {
-    //   if (isDev) {
-    //     logger.warn(`Skipping Elasticsearch validation in development: ${e.message}`);
-    //   } else {
-    //     throw e;
-    //   }
-    // }
-
-    // 4. File system validation
-    try {
-      logger.log('Validating file system permissions...');
-      const fileSystemService = app.get(FileSystemService);
-      await fileSystemService.validateFileSystem();
-      logger.log('✅ File system permissions validated');
-    } catch (e: any) {
-      if (isDev) {
-        logger.warn(`Skipping file system validation in development: ${e.message}`);
-      } else {
-        throw e;
-      }
-    }
-
-    // 5. Check required directories
-    try {
-      const fileSystemService = app.get(FileSystemService);
-      const uploadDir = configService.get<string>('upload.directory');
-      if (!uploadDir) {
-        throw new Error('Upload directory configuration is missing');
-      }
-      await fileSystemService.ensureDirectoryExists(uploadDir);
-      logger.log(`✅ Upload directory ready: ${uploadDir}`);
-    } catch (e: any) {
-      if (isDev) {
-        logger.warn(`Skipping upload dir check in development: ${e.message}`);
-      } else {
-        throw e;
-      }
-    }
-
-    logger.log('🎉 All startup validations passed successfully');
-
-  } catch (error) {
-    const isDev = (configService.get('app.env') || 'development') === 'development';
-    logger.error('Startup validation failed', error as any);
-    if (isDev) {
-      logger.warn('Continuing startup despite validation errors because NODE_ENV=development');
-      return;
-    }
-    throw new Error('Startup validation failed: ' + (error as any).message);
+    logger.log('Validating database connection...');
+    const databaseService = app.get(DatabaseService);
+    await databaseService.validateConnection();
+    logger.log('✅ Database connection validated');
+  } catch (e: any) {
+    logger.warn(`⚠️ Database validation failed, continuing anyway: ${e.message}`);
   }
+
+  // 2. Redis connection validation
+  try {
+    logger.log('Validating Redis connection...');
+    const redisService = app.get(RedisService);
+    await redisService.validateConnection();
+    logger.log('✅ Redis connection validated');
+  } catch (e: any) {
+    logger.warn(`⚠️ Redis connection failed, continuing without cache: ${e.message}`);
+  }
+
+  // 4. File system validation
+  try {
+    logger.log('Validating file system permissions...');
+    const fileSystemService = app.get(FileSystemService);
+    await fileSystemService.validateFileSystem();
+    logger.log('✅ File system permissions validated');
+  } catch (e: any) {
+    logger.warn(`⚠️ File system validation failed: ${e.message}`);
+  }
+
+  // 5. Check required directories
+  try {
+    const fileSystemService = app.get(FileSystemService);
+    const uploadDir = configService.get<string>('upload.directory');
+    if (!uploadDir) {
+      throw new Error('Upload directory configuration is missing');
+    }
+    await fileSystemService.ensureDirectoryExists(uploadDir);
+    logger.log(`✅ Upload directory ready: ${uploadDir}`);
+  } catch (e: any) {
+    logger.warn(`⚠️ Upload dir check failed: ${e.message}`);
+  }
+
+  logger.log('🎉 Startup validations complete');
 }
 
 // Handle uncaught exceptions
