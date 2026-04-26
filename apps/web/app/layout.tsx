@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { NextIntlClientProvider } from 'next-intl'
@@ -10,12 +10,17 @@ import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#2563eb',
+}
+
 export const metadata: Metadata = {
   title: 'B2B Marketplace - Enterprise Business Platform',
   description: 'Enterprise-grade B2B marketplace platform connecting businesses across India',
   keywords: 'B2B, marketplace, enterprise, business, India, suppliers, buyers',
   authors: [{ name: 'B2B Marketplace Team' }],
-  viewport: 'width=device-width, initial-scale=1',
   robots: 'index, follow',
   openGraph: {
     type: 'website',
@@ -31,7 +36,6 @@ export const metadata: Metadata = {
     creator: '@b2bmarketplace',
   },
   manifest: '/manifest.json',
-  themeColor: '#2563eb',
 }
 
 export default async function RootLayout({
