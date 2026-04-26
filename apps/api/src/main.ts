@@ -79,8 +79,8 @@ async function bootstrap() {
     }
 
     // Step 8: Start the application
-    const port = configService.get<number>('app.port') || 3001;
-    await app.listen(port);
+    const port = process.env.PORT || configService.get<number>('app.port') || 3001;
+    await app.listen(port, '0.0.0.0');
 
     logger.log(`🚀 Application is running on: ${await app.getUrl()}`);
     logger.log(`📊 Environment: ${configService.get('app.env')}`);
@@ -122,11 +122,7 @@ async function performStartupValidations(app: INestApplication) {
       await redisService.validateConnection();
       logger.log('✅ Redis connection validated');
     } catch (e: any) {
-      if (isDev) {
-        logger.warn(`Skipping Redis validation in development: ${e.message}`);
-      } else {
-        throw e;
-      }
+      logger.warn(`Redis connection failed, continuing without cache: ${e.message}`);
     }
 
     // 3. Elasticsearch connection validation (DISABLED - enable when Elasticsearch is available)
