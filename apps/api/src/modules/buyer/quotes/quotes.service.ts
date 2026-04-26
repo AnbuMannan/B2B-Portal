@@ -30,10 +30,21 @@ export class QuotesService {
   async listByRequirement(userId: string) {
     const buyer = await this.requireBuyer(userId);
 
-    // All quotes belonging to orders owned by this buyer (keeps legacy quotes
-    // that predate the buyLeadId column visible).
+    // Resolve order IDs first so the quote filter is unambiguous.
+    // Using a nested relation filter (order: { buyerId }) can miss rows in
+    // some Prisma versions; explicit IN is guaranteed to match.
+    const buyerOrders = await this.prisma.order.findMany({
+      where: { buyerId: buyer.id, deletedAt: null },
+      select: { id: true },
+    });
+    const orderIds = buyerOrders.map((o) => o.id);
+
+    if (orderIds.length === 0) {
+      return { groups: [], total: 0 };
+    }
+
     const quotes = await this.prisma.quote.findMany({
-      where: { order: { buyerId: buyer.id, deletedAt: null } },
+      where: { orderId: { in: orderIds } },
       orderBy: { createdAt: 'desc' },
       include: {
         seller: {
@@ -95,7 +106,7 @@ export class QuotesService {
     const buyer = await this.requireBuyer(userId);
 
     const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId, order: { buyerId: buyer.id, deletedAt: null } },
+      where: { id: quoteId, order: { buyerId: buyer.id } },
       include: {
         seller: {
           select: {
@@ -197,7 +208,7 @@ export class QuotesService {
   async accept(userId: string, quoteId: string) {
     const buyer = await this.requireBuyer(userId);
     const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId, order: { buyerId: buyer.id, deletedAt: null } },
+      where: { id: quoteId, order: { buyerId: buyer.id } },
       include: { order: true, seller: { select: { userId: true, companyName: true } } },
     });
     if (!quote) throw new NotFoundException('Quote not found');
@@ -321,7 +332,7 @@ export class QuotesService {
   async reject(userId: string, quoteId: string) {
     const buyer = await this.requireBuyer(userId);
     const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId, order: { buyerId: buyer.id, deletedAt: null } },
+      where: { id: quoteId, order: { buyerId: buyer.id } },
       include: { seller: { select: { userId: true } } },
     });
     if (!quote) throw new NotFoundException('Quote not found');
@@ -361,7 +372,7 @@ export class QuotesService {
   ) {
     const buyer = await this.requireBuyer(userId);
     const quote = await this.prisma.quote.findFirst({
-      where: { id: quoteId, order: { buyerId: buyer.id, deletedAt: null } },
+      where: { id: quoteId, order: { buyerId: buyer.id } },
       include: { seller: { select: { userId: true } } },
     });
     if (!quote) throw new NotFoundException('Quote not found');
