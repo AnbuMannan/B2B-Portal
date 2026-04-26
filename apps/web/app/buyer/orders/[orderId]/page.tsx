@@ -332,7 +332,7 @@ export default function OrderDetailPage() {
               </div>
 
               <p className="text-xs text-gray-400">
-                Receipt upload is optional — you can also just click "Mark as Paid" without a file if you have verbal confirmation.
+                Receipt upload is optional — you can also just click &quot;Mark as Paid&quot; without a file if you have verbal confirmation.
               </p>
 
               <div className="flex gap-3 pt-1">
