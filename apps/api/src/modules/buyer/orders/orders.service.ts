@@ -335,7 +335,15 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException('Order not found');
+
+    const invalidateDeliveryCaches = async () => {
+      await this.redis.delete(`buyer:dashboard:${userId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    };
+
     if (order.status === 'DELIVERED') {
+      await invalidateDeliveryCaches();
       return { alreadyDelivered: true };
     }
     if (order.status !== 'FULFILLED') {
@@ -347,9 +355,7 @@ export class OrdersService {
       data: { status: 'DELIVERED' },
     });
 
-    await this.redis.delete(`buyer:dashboard:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    await invalidateDeliveryCaches();
     this.logger.log(`Order ${orderId} marked DELIVERED by buyer ${buyer.id}`);
     return { delivered: true };
   }
@@ -369,7 +375,21 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'FULFILLED' || order.status === 'DELIVERED') return { alreadyFulfilled: true };
+
+    const buyerUserId = (order as any).buyer?.userId;
+    const invalidateFulfillCaches = async () => {
+      await this.redis.delete(`cache:GET:/api/seller/orders:u:${userId}`);
+      await this.redis.delete(`dashboard:${userId}`);
+      if (buyerUserId) {
+        await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
+        await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
+      }
+    };
+
+    if (order.status === 'FULFILLED' || order.status === 'DELIVERED') {
+      await invalidateFulfillCaches();
+      return { alreadyFulfilled: true };
+    }
     if (order.status !== 'ACCEPTED') {
       throw new BadRequestException('Only ACCEPTED orders can be marked as fulfilled');
     }
@@ -379,11 +399,7 @@ export class OrdersService {
       data: { status: 'FULFILLED' },
     });
 
-    const buyerUserId = (order as any).buyer?.userId;
-    if (buyerUserId) {
-      await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
-      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
-    }
+    await invalidateFulfillCaches();
     this.logger.log(`Order ${orderId} marked FULFILLED by seller ${seller.id}`);
     return { fulfilled: true, orderId };
   }

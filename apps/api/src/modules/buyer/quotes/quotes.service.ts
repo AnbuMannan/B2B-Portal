@@ -311,8 +311,13 @@ export class QuotesService {
       }
     }
 
-    // Invalidate buyer dashboard cache
     await this.redis.delete(`buyer:dashboard:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/quotes:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/quotes/${quoteId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders/${quote.orderId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/seller/orders:u:${quote.seller.userId}`);
+    await this.redis.delete(`dashboard:${quote.seller.userId}`);
 
     this.logger.log(
       `Buyer ${buyer.id} accepted quote ${quote.id} — order ${quote.orderId} finalized at ₹${finalPrice}`,
@@ -358,6 +363,14 @@ export class QuotesService {
       `The buyer has rejected your quote.`,
       { quoteId: quote.id, orderId: quote.orderId },
     );
+
+    await this.redis.delete(`buyer:dashboard:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/quotes:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/quotes/${quoteId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders/${quote.orderId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/seller/orders:u:${quote.seller.userId}`);
+    await this.redis.delete(`dashboard:${quote.seller.userId}`);
 
     this.logger.log(`Buyer ${buyer.id} rejected quote ${quote.id}`);
     return { quoteId: quote.id, status: 'REJECTED' };
@@ -407,6 +420,10 @@ export class QuotesService {
       `Counter price ₹${dto.counterPrice.toLocaleString('en-IN')} — review and respond.`,
       { quoteId: quote.id, counterPrice: dto.counterPrice },
     );
+
+    await this.redis.delete(`cache:GET:/api/buyer/quotes:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/quotes/${quoteId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders/${quote.orderId}:u:${userId}`);
 
     return {
       id: negotiation.id,

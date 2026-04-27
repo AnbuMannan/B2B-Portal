@@ -364,7 +364,10 @@ export class SellerDashboardService {
     const seller = await this.prisma.seller.findFirst({ where: { userId } });
     if (!seller) throw new NotFoundException('Seller profile not found');
 
-    const order = await this.prisma.order.findFirst({ where: { id: orderId, sellerId: seller.id, deletedAt: null } });
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, sellerId: seller.id, deletedAt: null },
+      include: { buyer: { select: { userId: true } } },
+    });
     if (!order) throw new NotFoundException('Order not found');
 
     if (order.status !== 'ACCEPTED') {
@@ -379,6 +382,14 @@ export class SellerDashboardService {
       data: { status: 'FULFILLED' as any },
       select: { id: true, status: true, updatedAt: true },
     });
+
+    await this.redis.delete(`cache:GET:/api/seller/orders:u:${userId}`);
+    await this.redis.delete(`dashboard:${userId}`);
+    const buyerUserId = (order as any).buyer?.userId;
+    if (buyerUserId) {
+      await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
+    }
 
     return updated;
   }
