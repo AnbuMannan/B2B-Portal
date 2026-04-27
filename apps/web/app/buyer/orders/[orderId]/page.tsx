@@ -24,6 +24,7 @@ export default function OrderDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Raise request (complaint) state
+  const [showDeliveryConfirm, setShowDeliveryConfirm] = useState(false);
   const [showComplaint, setShowComplaint] = useState(false);
   const [complaint, setComplaint] = useState({ category: 'OTHER', subject: '', description: '' });
   const [complaintLoading, setComplaintLoading] = useState(false);
@@ -88,7 +89,6 @@ export default function OrderDetailPage() {
   };
 
   const handleConfirmDelivery = async () => {
-    if (!confirm('Confirm that you have received the goods/services?')) return;
     const token = localStorage.getItem('accessToken');
     if (!token) return;
     setConfirmLoading(true);
@@ -99,6 +99,7 @@ export default function OrderDetailPage() {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       showToast('Delivery confirmed!');
+      setShowDeliveryConfirm(false);
       await loadOrder();
     } catch (err: any) {
       showToast(err?.response?.data?.message ?? 'Could not confirm delivery');
@@ -204,14 +205,32 @@ export default function OrderDetailPage() {
                 Upload Payment Receipt
               </button>
             )}
-            {canConfirm && (
+            {canConfirm && !showDeliveryConfirm && (
               <button
-                onClick={handleConfirmDelivery}
-                disabled={confirmLoading}
-                className="px-4 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+                onClick={() => setShowDeliveryConfirm(true)}
+                className="px-4 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
               >
-                {confirmLoading ? 'Confirming…' : 'Confirm Delivery'}
+                Confirm Delivery
               </button>
+            )}
+            {canConfirm && showDeliveryConfirm && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600">Received the goods?</span>
+                <button
+                  onClick={handleConfirmDelivery}
+                  disabled={confirmLoading}
+                  className="px-3 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+                >
+                  {confirmLoading ? 'Saving…' : 'Yes, confirm'}
+                </button>
+                <button
+                  onClick={() => setShowDeliveryConfirm(false)}
+                  disabled={confirmLoading}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition"
+                >
+                  Cancel
+                </button>
+              </div>
             )}
           </div>
         </div>

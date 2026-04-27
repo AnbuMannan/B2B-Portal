@@ -370,6 +370,21 @@ export class SellerDashboardService {
     });
     if (!order) throw new NotFoundException('Order not found');
 
+    const buyerUserId = (order as any).buyer?.userId;
+    const bustCaches = async () => {
+      await this.redis.delete(`cache:GET:/api/seller/orders:u:${userId}`);
+      await this.redis.delete(`dashboard:${userId}`);
+      if (buyerUserId) {
+        await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
+        await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
+      }
+    };
+
+    if (order.status === 'FULFILLED' || order.status === 'DELIVERED') {
+      await bustCaches();
+      return { id: orderId, status: order.status, updatedAt: order.updatedAt };
+    }
+
     if (order.status !== 'ACCEPTED') {
       throw new BadRequestException('Can only fulfill an order that the buyer has accepted');
     }
@@ -383,14 +398,7 @@ export class SellerDashboardService {
       select: { id: true, status: true, updatedAt: true },
     });
 
-    await this.redis.delete(`cache:GET:/api/seller/orders:u:${userId}`);
-    await this.redis.delete(`dashboard:${userId}`);
-    const buyerUserId = (order as any).buyer?.userId;
-    if (buyerUserId) {
-      await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
-      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
-    }
-
+    await bustCaches();
     return updated;
   }
 
