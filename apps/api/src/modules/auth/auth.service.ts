@@ -25,6 +25,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ResetPasswordDirectDto } from './dto/reset-password-direct.dto';
 
 const BCRYPT_ROUNDS = 12;
 const OTP_TTL_SECONDS = 300; // 5 minutes
@@ -227,6 +228,42 @@ export class AuthService {
     });
 
     this.logger.log(`Password reset for: ${user.email}`);
+    return { message: 'Password reset successful. Please log in with your new password.' };
+  }
+
+  async checkEmailExists(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('No account found with this email address');
+    return { exists: true };
+  }
+
+  async resetPasswordDirect(dto: ResetPasswordDirectDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, email: true },
+    });
+    if (!user) throw new NotFoundException('No account found with this email address');
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpiry: null,
+      },
+    });
+
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: user.id },
+      data: { isRevoked: true },
+    });
+
+    this.logger.log(`Password reset (direct) for: ${user.email}`);
     return { message: 'Password reset successful. Please log in with your new password.' };
   }
 

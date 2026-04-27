@@ -11,6 +11,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ResetPasswordDirectDto } from './dto/reset-password-direct.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 @ApiTags('auth')
@@ -75,6 +76,26 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Invalid or expired token' })
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<ApiResponseDto<any>> {
     const result = await this.authService.resetPassword(dto);
+    return ApiResponseDto.success(result.message);
+  }
+
+  @Post('check-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check whether an email is registered (used by forgot-password flow)' })
+  @ApiResponse({ status: 200, description: 'Email exists' })
+  @ApiResponse({ status: 404, description: 'No account found' })
+  async checkEmail(@Body() dto: ForgotPasswordDto): Promise<ApiResponseDto<any>> {
+    const result = await this.authService.checkEmailExists(dto.email);
+    return ApiResponseDto.success('Email verified', result);
+  }
+
+  @Post('reset-password-direct')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password directly with email + new password (no token)' })
+  @ApiResponse({ status: 200, description: 'Password reset successful' })
+  @ApiResponse({ status: 404, description: 'No account found with this email' })
+  async resetPasswordDirect(@Body() dto: ResetPasswordDirectDto): Promise<ApiResponseDto<any>> {
+    const result = await this.authService.resetPasswordDirect(dto);
     return ApiResponseDto.success(result.message);
   }
 
