@@ -245,15 +245,20 @@ export class OrdersService {
 
     const order = await (this.prisma.order as any).findFirst({
       where: { id: orderId, buyerId: buyer.id, deletedAt: null },
-      select: { id: true, paymentStatus: true, razorpayOrderId: true },
+      select: { id: true, paymentStatus: true, razorpayOrderId: true, seller: { select: { userId: true } } },
     });
 
     if (!order) throw new NotFoundException('Order not found');
 
+    const sellerUserId: string | undefined = (order as any).seller?.userId;
     const invalidateOrderCache = async () => {
       await this.redis.delete(`buyer:dashboard:${userId}`);
       await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
       await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${userId}*`);
+      if (sellerUserId) {
+        await this.redis.deletePattern(`cache:GET:/api/seller/orders:u:${sellerUserId}*`);
+        await this.redis.delete(`dashboard:${sellerUserId}`);
+      }
     };
 
     if (order.paymentStatus === 'COMPLETED') {
@@ -292,17 +297,22 @@ export class OrdersService {
 
     const order = await (this.prisma.order as any).findFirst({
       where: { id: orderId, buyerId: buyer.id, deletedAt: null },
-      select: { id: true, status: true, paymentStatus: true },
+      select: { id: true, status: true, paymentStatus: true, seller: { select: { userId: true } } },
     });
 
     if (!order) throw new NotFoundException('Order not found');
     if (order.status !== 'ACCEPTED') {
       throw new BadRequestException('Only ACCEPTED orders can be marked as paid');
     }
+    const sellerUserId: string | undefined = (order as any).seller?.userId;
     const invalidateCache = async () => {
       await this.redis.delete(`buyer:dashboard:${userId}`);
       await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
       await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${userId}*`);
+      if (sellerUserId) {
+        await this.redis.deletePattern(`cache:GET:/api/seller/orders:u:${sellerUserId}*`);
+        await this.redis.delete(`dashboard:${sellerUserId}`);
+      }
     };
 
     if (order.paymentStatus === 'COMPLETED') {
