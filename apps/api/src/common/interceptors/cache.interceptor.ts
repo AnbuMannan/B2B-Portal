@@ -29,6 +29,14 @@ export class CacheInterceptor implements NestInterceptor {
     '/api/buyer': 30 * 60, // 30 minutes
   };
 
+  // Never cache these paths — order/quote state must always reflect DB truth
+  private readonly noCachePaths = [
+    '/api/buyer/orders',
+    '/api/buyer/quotes',
+    '/api/seller/orders',
+    '/api/seller/dashboard',
+  ];
+
   constructor(private redisService: RedisService) {}
 
   async intercept(
@@ -44,6 +52,11 @@ export class CacheInterceptor implements NestInterceptor {
 
     // Only cache GET requests
     if (request.method !== 'GET') {
+      return next.handle();
+    }
+
+    // Skip cache for order/quote flow — must always hit DB
+    if (this.noCachePaths.some((p) => request.path.startsWith(p))) {
       return next.handle();
     }
 

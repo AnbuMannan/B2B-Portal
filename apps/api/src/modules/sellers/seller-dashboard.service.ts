@@ -22,8 +22,6 @@ export class SellerDashboardService {
 
   async getDashboard(userId: string) {
     const cacheKey = `dashboard:${userId}`;
-    const cached = await this.redis.get<any>(cacheKey);
-    if (cached) return cached;
 
     // select only fields needed — avoids fetching all 30+ seller columns
     const seller = await this.prisma.seller.findUnique({
@@ -175,7 +173,6 @@ export class SellerDashboardService {
       },
     };
 
-    await this.redis.set(cacheKey, result, DASHBOARD_TTL);
     return result;
   }
 
