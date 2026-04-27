@@ -253,7 +253,7 @@ export class OrdersService {
     const invalidateOrderCache = async () => {
       await this.redis.delete(`buyer:dashboard:${userId}`);
       await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
-      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+      await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${userId}*`);
     };
 
     if (order.paymentStatus === 'COMPLETED') {
@@ -302,7 +302,7 @@ export class OrdersService {
     const invalidateCache = async () => {
       await this.redis.delete(`buyer:dashboard:${userId}`);
       await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
-      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+      await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${userId}*`);
     };
 
     if (order.paymentStatus === 'COMPLETED') {
@@ -339,7 +339,7 @@ export class OrdersService {
     const invalidateDeliveryCaches = async () => {
       await this.redis.delete(`buyer:dashboard:${userId}`);
       await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
-      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+      await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${userId}*`);
     };
 
     if (order.status === 'DELIVERED') {
@@ -378,11 +378,11 @@ export class OrdersService {
 
     const buyerUserId = (order as any).buyer?.userId;
     const invalidateFulfillCaches = async () => {
-      await this.redis.delete(`cache:GET:/api/seller/orders:u:${userId}`);
+      await this.redis.deletePattern(`cache:GET:/api/seller/orders:u:${userId}*`);
       await this.redis.delete(`dashboard:${userId}`);
       if (buyerUserId) {
         await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
-        await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
+        await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${buyerUserId}*`);
       }
     };
 

@@ -372,11 +372,11 @@ export class SellerDashboardService {
 
     const buyerUserId = (order as any).buyer?.userId;
     const bustCaches = async () => {
-      await this.redis.delete(`cache:GET:/api/seller/orders:u:${userId}`);
+      await this.redis.deletePattern(`cache:GET:/api/seller/orders:u:${userId}*`);
       await this.redis.delete(`dashboard:${userId}`);
       if (buyerUserId) {
         await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
-        await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
+        await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${buyerUserId}*`);
       }
     };
 

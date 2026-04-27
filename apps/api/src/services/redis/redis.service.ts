@@ -74,6 +74,20 @@ export class RedisService {
     }
   }
 
+  async deletePattern(pattern: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      if (!this.client.isOpen) await this.connect();
+      const keys = await this.client.keys(pattern);
+      if (keys.length > 0) {
+        await this.client.del(keys);
+      }
+      this.logger.debug(`Cache DELETE pattern: ${pattern} (${keys.length} keys)`);
+    } catch (error) {
+      this.logger.error(`Delete pattern failed: ${pattern}`, error);
+    }
+  }
+
   async flush(): Promise<void> {
     if (!this.client) return;
     try {

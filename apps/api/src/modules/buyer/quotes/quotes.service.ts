@@ -312,11 +312,11 @@ export class QuotesService {
     }
 
     await this.redis.delete(`buyer:dashboard:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/quotes:u:${userId}`);
+    await this.redis.deletePattern(`cache:GET:/api/buyer/quotes:u:${userId}*`);
     await this.redis.delete(`cache:GET:/api/buyer/quotes/${quoteId}:u:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${userId}*`);
     await this.redis.delete(`cache:GET:/api/buyer/orders/${quote.orderId}:u:${userId}`);
-    await this.redis.delete(`cache:GET:/api/seller/orders:u:${quote.seller.userId}`);
+    await this.redis.deletePattern(`cache:GET:/api/seller/orders:u:${quote.seller.userId}*`);
     await this.redis.delete(`dashboard:${quote.seller.userId}`);
 
     this.logger.log(
@@ -365,11 +365,11 @@ export class QuotesService {
     );
 
     await this.redis.delete(`buyer:dashboard:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/quotes:u:${userId}`);
+    await this.redis.deletePattern(`cache:GET:/api/buyer/quotes:u:${userId}*`);
     await this.redis.delete(`cache:GET:/api/buyer/quotes/${quoteId}:u:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    await this.redis.deletePattern(`cache:GET:/api/buyer/orders:u:${userId}*`);
     await this.redis.delete(`cache:GET:/api/buyer/orders/${quote.orderId}:u:${userId}`);
-    await this.redis.delete(`cache:GET:/api/seller/orders:u:${quote.seller.userId}`);
+    await this.redis.deletePattern(`cache:GET:/api/seller/orders:u:${quote.seller.userId}*`);
     await this.redis.delete(`dashboard:${quote.seller.userId}`);
 
     this.logger.log(`Buyer ${buyer.id} rejected quote ${quote.id}`);
@@ -421,7 +421,7 @@ export class QuotesService {
       { quoteId: quote.id, counterPrice: dto.counterPrice },
     );
 
-    await this.redis.delete(`cache:GET:/api/buyer/quotes:u:${userId}`);
+    await this.redis.deletePattern(`cache:GET:/api/buyer/quotes:u:${userId}*`);
     await this.redis.delete(`cache:GET:/api/buyer/quotes/${quoteId}:u:${userId}`);
     await this.redis.delete(`cache:GET:/api/buyer/orders/${quote.orderId}:u:${userId}`);
 
