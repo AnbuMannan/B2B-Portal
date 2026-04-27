@@ -249,7 +249,15 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException('Order not found');
+
+    const invalidateOrderCache = async () => {
+      await this.redis.delete(`buyer:dashboard:${userId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    };
+
     if (order.paymentStatus === 'COMPLETED') {
+      await invalidateOrderCache();
       return { alreadyPaid: true };
     }
 
@@ -272,9 +280,7 @@ export class OrdersService {
       },
     });
 
-    await this.redis.delete(`buyer:dashboard:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    await invalidateOrderCache();
     this.logger.log(`Order ${orderId} payment verified — ${dto.razorpayPaymentId}`);
     return { success: true };
   }
@@ -293,7 +299,14 @@ export class OrdersService {
     if (order.status !== 'ACCEPTED') {
       throw new BadRequestException('Only ACCEPTED orders can be marked as paid');
     }
+    const invalidateCache = async () => {
+      await this.redis.delete(`buyer:dashboard:${userId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    };
+
     if (order.paymentStatus === 'COMPLETED') {
+      await invalidateCache();
       return { alreadyPaid: true };
     }
 
@@ -306,9 +319,7 @@ export class OrdersService {
       },
     });
 
-    await this.redis.delete(`buyer:dashboard:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
-    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
+    await invalidateCache();
     this.logger.log(`Order ${orderId} marked PAID (offline) by buyer ${buyer.id}`);
     return { success: true };
   }
