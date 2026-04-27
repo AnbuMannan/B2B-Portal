@@ -273,6 +273,8 @@ export class OrdersService {
     });
 
     await this.redis.delete(`buyer:dashboard:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
     this.logger.log(`Order ${orderId} payment verified — ${dto.razorpayPaymentId}`);
     return { success: true };
   }
@@ -305,6 +307,8 @@ export class OrdersService {
     });
 
     await this.redis.delete(`buyer:dashboard:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
     this.logger.log(`Order ${orderId} marked PAID (offline) by buyer ${buyer.id}`);
     return { success: true };
   }
@@ -333,6 +337,8 @@ export class OrdersService {
     });
 
     await this.redis.delete(`buyer:dashboard:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${userId}`);
+    await this.redis.delete(`cache:GET:/api/buyer/orders:u:${userId}`);
     this.logger.log(`Order ${orderId} marked DELIVERED by buyer ${buyer.id}`);
     return { delivered: true };
   }
@@ -348,7 +354,7 @@ export class OrdersService {
 
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, sellerId: seller.id, deletedAt: null },
-      select: { id: true, status: true, paymentStatus: true },
+      select: { id: true, status: true, paymentStatus: true, buyer: { select: { userId: true } } },
     });
 
     if (!order) throw new NotFoundException('Order not found');
@@ -362,6 +368,11 @@ export class OrdersService {
       data: { status: 'FULFILLED' },
     });
 
+    const buyerUserId = (order as any).buyer?.userId;
+    if (buyerUserId) {
+      await this.redis.delete(`cache:GET:/api/buyer/orders/${orderId}:u:${buyerUserId}`);
+      await this.redis.delete(`cache:GET:/api/buyer/orders:u:${buyerUserId}`);
+    }
     this.logger.log(`Order ${orderId} marked FULFILLED by seller ${seller.id}`);
     return { fulfilled: true, orderId };
   }
